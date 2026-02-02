@@ -1,0 +1,478 @@
+---
+title: "Analysis of<br>Spatial & Temporal Data"
+subtitle: <span style="color:dodgerblue">Non-probabilistic Forecast & Discrete Predictands</span>
+author: "22BA13260 - Tran Huy Quan"
+date: "`r Sys.Date()`"
+output: 
+  rmdformats::readthedown:
+    highlight: espresso
+    code_download: FALSE
+    code_folding: show
+    number_sections: TRUE
+    dev: "svg"
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.dim = c(8, 6), fig.align = "center", out.width = "100%")
+```
+
+```{r klippy, echo=FALSE, include=TRUE}
+# klippy::klippy(c('r', 'python', 'json', 'linux'), position = c('top', 'right'),
+#                tooltip_message = 'Click to copy', tooltip_success = 'Copied')
+```
+
+------------------------------------------------------------------------
+
+> **Preparation**
+
+```{r, warning=FALSE, message=FALSE}
+# Loading required R packages:
+library(tidyverse)
+library(grid)
+library(gridExtra)
+library(ggExtra)
+library(MASS)
+library(ggridges)
+library(viridis)
+library(mnormt)
+library(plotly)
+```
+
+# Data preparation
+
+As previous practice(s), let's select a dataset that interests you from [www.kaggle.com](www.kaggle.com).
+
+> **Please note that** the collected data is used for practice data analysis techniques and may not necessarily reflect the real-life situations.
+
+Let's visit previous practice(s) to choose your way to collect data from `kaggle`
+
+```{r}
+# library(RKaggle)
+```
+
+> Although you have the freedom to examine any data you prefer, it should adhere to a similar structure as the provided example below.<br>Otherwise, you may need to take additional steps for data manipulation.
+
+```{r}
+# Load Rainfall Data
+dat.0 <- read.csv("rainfall in india 1901-2015.csv")
+
+dat.0 <- na.omit(dat.0)
+
+dim(dat.0)
+head(dat.0)
+```
+
+------------------------------------------------------------------------
+
+**`IMPORTANT`**:
+
+1.  The analysis steps presented in the subsequent sections serve as mere clues to guide you in conducting your analysis on the data.
+
+    -   Therefore, it is crucial to thoroughly comprehend your data before applying any techniques.
+        Some straightforward visualization techniques may provide valuable insights.
+
+    -   Each data possesses its unique characteristics and intended purposes, so it is essential to refrain from forcing the analysis to reveal signals that may not be present in the dataset.
+
+2.  Students are permitted to utilize multiple data sources to practice with different sections.
+    The primary objective is to apply appropriate methods to your datasets and their respective purposes.
+
+3.  Students are highly encouraged to employ the **piping** technique and `ggplot` during the analysis process.
+
+------------------------------------------------------------------------
+
+# Analysis
+
+------------------------------------------------------------------------
+
+## General Analysis
+
+> Brief look at the data structure & simple statistics
+
+```{r}
+str(dat.0)
+summary(dat.0$ANNUAL)
+```
+
+> Histogram of Annual Rainfall
+
+```{r, warning=FALSE, message=FALSE}
+ggplot(dat.0, aes(x = ANNUAL)) +
+  geom_histogram(fill = "steelblue", color = "black", bins = 30) +
+  labs(title = "Distribution of Annual Rainfall in India (1901-2015)",
+       x = "Annual Rainfall (mm)",
+       y = "Frequency") +
+  theme_minimal()
+```
+
+## One-Sample t-test (The Benchmark Test)
+
+**Question**: The long-term average annual rainfall in India is often cited around 1400mm (check specific sources, but let's use this as a benchmark).
+Is the mean annual rainfall in this dataset significantly different from 1400mm?
+
+-   $H_0: \mu_{annual} = 1400$
+-   $H_A: \mu_{annual} \ne 1400$
+
+```{r}
+# Run One-Sample t-test
+t.test(dat.0$ANNUAL, mu = 1400)
+```
+
+## Two-Sample t-test (Comparing Subdivisions)
+
+**Question**: Is there a significant difference in Annual Rainfall between **KERALA** and **RAJASTHAN**?
+
+-   $H_0: \mu_{Kerala} = \mu_{Rajasthan}$
+-   $H_A: \mu_{Kerala} \ne \mu_{Rajasthan}$
+
+```{r}
+# Filter data for two distinct subdivisions
+sub_compare <- dat.0 %>% 
+  filter(SUBDIVISION %in% c("KERALA", "WEST RAJASTHAN"))
+
+# Boxplot
+ggplot(sub_compare, aes(x = SUBDIVISION, y = ANNUAL, fill = SUBDIVISION)) +
+  geom_boxplot() +
+  labs(title = "Annual Rainfall: Kerala vs West Rajasthan") +
+  theme_minimal()
+
+# T-test
+t.test(ANNUAL ~ SUBDIVISION, data = sub_compare)
+```
+
+> **IMPORTANT**: "The P-Value Trap":
+
+In many versions of this dataset, the p-value is quite high (non-significant).
+
+***If the p-value for Residence Type is 0.80 and the p-value for Age is 0.00001, which variable is a better predictor for a medical screening app? Why does 'Statistical Power' matter when we have 5,000 rows of data?***
+
+------------------------------------------------------------------------
+
+# Advanced Inductive Analysis
+
+> In this section, we go beyond simple t-tests to explore categorical relationships and attribution.
+
+## Data Preparation for Categorical Analysis
+
+We will define new categorical variables:
+- **HeavyRain**: 1 if Annual Rainfall > Median (1400mm), 0 otherwise.
+- **WetJan**: 1 if January Rainfall > Median January Rainfall, 0 otherwise. Understanding if a wet start to the year signals a wet year.
+
+```{r}
+# Calculate Medians
+median_annual <- median(dat.0$ANNUAL, na.rm = TRUE)
+median_jan <- median(dat.0$JAN, na.rm = TRUE)
+
+dat.cat <- dat.0 %>%
+  mutate(
+    HeavyRain = ifelse(ANNUAL > median_annual, 1, 0),
+    WetJan = ifelse(JAN > median_jan, 1, 0)
+  )
+
+# Preview
+head(dat.cat %>% select(SUBDIVISION, YEAR, JAN, ANNUAL, WetJan, HeavyRain))
+```
+
+## Chi-Square Test of Independence
+
+**Question**: Is there a significant association between having a "Wet January" and experiencing "Heavy Rain" for the entire year?
+
+-   $H_0$: Wet January and Heavy Annual Rainfall are independent.
+-   $H_A$: They are dependent (associated).
+
+```{r}
+# 1. Create Contingency Table
+tab_jan_annual <- table(dat.cat$WetJan, dat.cat$HeavyRain)
+rownames(tab_jan_annual) <- c("Dry Jan", "Wet Jan")
+colnames(tab_jan_annual) <- c("Normal Rain", "Heavy Rain")
+
+print(tab_jan_annual)
+
+# 2. Run Chi-Square Test
+chisq.test(tab_jan_annual)
+```
+
+## Proportion Test (Two Proportions)
+
+**Question**: Is the probability of having a "Heavy Rain" year significantly different between **KERALA** and **RAJASTHAN**?
+
+-   $H_0: P_{Kerala} = P_{Rajasthan}$
+-   $H_A: P_{Kerala} \ne P_{Rajasthan}$
+
+```{r}
+# 1. Get counts of Heavy Rain years for each region
+regional_counts <- dat.cat %>%
+  filter(SUBDIVISION %in% c("KERALA", "WEST RAJASTHAN")) %>%
+  group_by(SUBDIVISION) %>%
+  summarise(
+    HeavyYears = sum(HeavyRain),
+    TotalYears = n()
+  )
+
+print(regional_counts)
+
+# 2. Run Proportion Test
+prop.test(x = regional_counts$HeavyYears, n = regional_counts$TotalYears)
+```
+
+## Scalar Attribution (OR, RR, AR)
+
+We quantify the risk of a "Heavy Rain" year given a "Wet January".
+
+```{r}
+calculate_attribution <- function(outcome, predictor, predictor_name) {
+  # Table layout: Rows = Predictor (1=Exposed, 0=Unexposed), Cols = Outcome (1=Case, 0=Control)
+  tab <- table(factor(predictor, levels = c(1, 0)), 
+               factor(outcome, levels = c(1, 0)))
+  
+  a <- tab[1, 1] # Exposed + Case
+  b <- tab[1, 2] # Exposed + Control
+  c <- tab[2, 1] # Unexposed + Case
+  d <- tab[2, 2] # Unexposed + Control
+  
+  # Calculate Scalars
+  risk_exposed <- a / (a + b)
+  risk_unexposed <- c / (c + d)
+  
+  odds_ratio <- (a * d) / (b * c)
+  relative_risk <- risk_exposed / risk_unexposed
+  attr_risk <- risk_exposed - risk_unexposed # Risk Difference
+  
+  # Return as a clean data frame
+  data.frame(
+    Factor = predictor_name,
+    OR = round(odds_ratio, 2),
+    RR = round(relative_risk, 2),
+    AR_Difference = round(attr_risk, 4),
+    Total_Cases = a + c
+  )
+}
+
+# Calculate Attribution for Wet Jan -> Heavy Rain
+attr_jan <- calculate_attribution(dat.cat$HeavyRain, dat.cat$WetJan, "Wet January")
+print(attr_jan)
+```
+
+> **Visualization of Attribution**
+
+```{r}
+ggplot(attr_jan, aes(x = Factor, y = OR)) +
+  geom_point(size = 5, color = "darkred") +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "blue") +
+  geom_text(aes(label = paste("OR =", OR)), vjust = -1) +
+  labs(title = "Scalar Attribution: Odds Ratio",
+       subtitle = "Does a Wet January increase odds of Heavy Annual Rain?",
+       y = "Odds Ratio (OR)", x = "") +
+  theme_minimal()
+```
+
+------------------------------------------------------------------------
+
+# Forecast Verification Setup
+
+> We will now prepare the data for the binary forecast verification task.
+
+> **Now, let's try by yourself**
+
+```{r}
+set.seed(2023)
+
+# 1. Define Binary Event "Heavy Rain" based on Median Annual Rainfall
+median_rain <- median(dat.0$ANNUAL, na.rm = TRUE)
+cat("Median Annual Rainfall:", median_rain, "mm\n")
+
+# Create a binary target: 1 if Annual > Median, 0 otherwise
+dat.analysis <- dat.0 %>%
+  mutate(HeavyRain = ifelse(ANNUAL > median_rain, 1, 0)) %>%
+  # We will use January, February, March rainfall to predict if the year will be 'Heavy'
+  dplyr::select(HeavyRain, JAN, FEB, MAR) %>%
+  na.omit()
+
+# Split Data into Train (70%) and Test (30%)
+train_idx <- sample(seq_len(nrow(dat.analysis)), size = 0.7 * nrow(dat.analysis))
+train_data <- dat.analysis[train_idx, ]
+test_data <- dat.analysis[-train_idx, ]
+
+# 2. Train Model (Logistic Regression)
+model_glm <- glm(HeavyRain ~ JAN + FEB + MAR, data = train_data, family = "binomial")
+summary(model_glm)
+
+# 3. Generate Probabilistic Forecasts (Score)
+test_data$score <- predict(model_glm, newdata = test_data, type = "response")
+
+# 4. Generate Discrete Forecasts (Deterministic)
+threshold <- 0.5
+test_data$forecast <- ifelse(test_data$score >= threshold, 1, 0) 
+
+# 5. Create Confusion Matrix (Contingency Table)
+tab_verif <- table(factor(test_data$forecast, levels = c(1, 0)), 
+                   factor(test_data$HeavyRain, levels = c(1, 0)))
+
+a <- tab_verif[1, 1]
+b <- tab_verif[1, 2]
+c <- tab_verif[2, 1]
+d <- tab_verif[2, 2]
+n <- sum(tab_verif)
+
+print(tab_verif)
+```
+
+## Accuracy / Proportion Correct (PC)
+
+```{r}
+PC <- (a + d) / n
+cat("Accuracy (PC):", round(PC, 4), "\n")
+```
+
+## Bias (B)
+
+```{r}
+B <- (a + b) / (a + c)
+cat("Bias (B):", round(B, 4), "\n")
+```
+
+## Reliability & Resolution (FAR)
+
+```{r}
+FAR <- b / (a + b)
+cat("False Alarm Ratio (FAR):", round(FAR, 4), "\n")
+```
+
+## Discrimination
+
+```{r}
+H <- a / (a + c)
+F_rate <- b / (b + d)
+
+cat("Hit Rate (H):", round(H, 4), "\n")
+cat("False Alarm Rate (F):", round(F_rate, 4), "\n")
+```
+
+------------------------------------------------------------------------
+
+# The 2x2 Contigency Table - Skill Scores
+
+> REMEMBER to apply the **Extensions for Multicategory**
+
+## Heidke Skill Score (HSS)
+
+```{r}
+num_hss <- 2 * (a * d - b * c)
+den_hss <- (a + c) * (c + d) + (a + b) * (b + d)
+HSS <- num_hss / den_hss
+cat("Heidke Skill Score (HSS):", round(HSS, 4), "\n")
+```
+
+## Peirce Skill Score (PSS)
+
+```{r}
+PSS <- H - F_rate
+cat("Peirce Skill Score (PSS):", round(PSS, 4), "\n")
+```
+
+## Clayton Skill Score (CSS)
+
+```{r}
+CSS <- PSS
+cat("Clayton Skill Score (CSS):", round(CSS, 4), "\n")
+```
+
+## Gilbert Skill Score (GSS)
+
+```{r}
+a_ref <- ((a + b) * (a + c)) / n
+GSS <- (a - a_ref) / (a - a_ref + b + c)
+cat("Gilbert Skill Score (GSS):", round(GSS, 4), "\n")
+```
+
+## Yule's Q / Odds Ratio Skill Score (ORSS)
+
+```{r}
+num_q <- a * d - b * c
+den_q <- a * d + b * c
+ORSS <- num_q / den_q
+cat("Odds Ratio Skill Score (ORSS/Q):", round(ORSS, 4), "\n")
+```
+
+## H-F & T-M Diagram
+
+```{r, fig.width=10, fig.height=5}
+hf_df <- data.frame(F_rate = F_rate, H_rate = H)
+
+p1 <- ggplot(hf_df, aes(x = F_rate, y = H_rate)) +
+  geom_point(color = "red", size = 5) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey") +
+  xlim(0, 1) + ylim(0, 1) +
+  labs(title = "H-F Diagram\n(ROC Point)", 
+       x = "False Alarm Rate (F)", 
+       y = "Hit Rate (H)") +
+  theme_minimal()
+
+reliab_data <- test_data %>%
+  mutate(bin = cut(score, breaks = seq(0, 1, 0.1), include.lowest = TRUE)) %>%
+  group_by(bin) %>%
+  summarise(
+    mean_forecast = mean(score),
+    observed_freq = mean(as.numeric(as.character(HeavyRain))), 
+    count = n()
+  )
+
+p2 <- ggplot(reliab_data, aes(x = mean_forecast, y = observed_freq)) +
+  geom_line(color = "blue") +
+  geom_point(aes(size = count), color = "blue", alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
+  xlim(0, 1) + ylim(0, 1) +
+  labs(title = "Reliability Diagram\n(Observed vs Forecast)", 
+       x = "Forecast Probability", 
+       y = "Observed Frequency") +
+  theme_minimal()
+
+grid.arrange(p1, p2, ncol = 2)
+```
+
+# Receiver Operating Characteristic (ROC) Analysis
+
+> This is the most important part.
+> Let's complete this part carefully with your own thoughts about the results.
+
+## Computation Steps
+
+```{r}
+library(pROC)
+
+roc_obj <- roc(test_data$HeavyRain, test_data$score, quiet = TRUE) 
+
+auc_value <- auc(roc_obj)
+cat("Area Under the Curve (AUC):", round(auc_value, 4), "\n")
+```
+
+## ROC Diagram
+
+```{r}
+# Plot ROC Curve
+ggroc(roc_obj, colour = "dodgerblue", size = 1.2) +
+  geom_segment(aes(x = 1, xend = 0, y = 0, yend = 1), 
+               color = "grey", linetype = "dashed") +
+  labs(title = paste("ROC Curve for Heavy Rain Prediction (AUC =", round(auc_value, 3), ")"), 
+       subtitle = "False Positive Rate (1-Specificity) vs True Positive Rate (Sensitivity)") +
+  theme_minimal()
+```
+
+------------------------------------------------------------------------
+
+# Conclusion on the Data
+
+1.  **Conclusion 1 - Skill Scores**: The **Heidke Skill Score (HSS)** of `r round(HSS, 3)` and **Peirce Skill Score (PSS)** of `r round(PSS, 3)` indicate that our model has moderate skill compared to a random forecast.
+    The values are positive, suggesting the model is better than chance, but there is room for improvement given the low prevalence of Heavy Rain events.
+
+2.  **Conclusion 2 - Bias & Reliability**: The **Bias** score of `r round(B, 3)` suggests the model is [`r ifelse(B>1, "Overforecasting", "Underforecasting")`] the event frequency at the chosen threshold.
+    The Reliability Diagram shows how well the predicted probabilities match observed frequencies across different risk bins.
+
+3.  **Conclusion 3 - ROC Analysis**: The **AUC** of `r round(auc_value, 3)` indicates that the model has **`r ifelse(auc_value > 0.8, "Good", ifelse(auc_value > 0.7, "Fair", "Poor"))`** discriminative ability.
+    This metric is independent of the chosen threshold and suggests that the early rainfall months (JAN, FEB, MAR) provide meaningful signal for distinguishing Heavy Rain years.
+
+4.  **Conclusion 4 - Statistical Inference**: 
+    -   The **Chi-Square Test** helps us determine if early-year weather patterns (e.g., a "Wet January") are statistically independent of the annual outcome.
+    -   The **Scalar Attribution** (Odds Ratio = `r attr_jan$OR`) quantifies this strength. An OR > 1 would verify that years starting wet are significantly more likely to end up as "Heavy Rain" years, validating the use of early months as predictors in our Logistic Regression model.
