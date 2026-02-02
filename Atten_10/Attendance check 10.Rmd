@@ -1,0 +1,301 @@
+---
+title: "Meteorite Landings Analysis"
+author: "**22BA13260 - Tran Huy Quan**"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    highlight: espresso
+    theme: flatly
+    code_download: true
+    code_folding: show
+    number_sections: TRUE
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  warning = FALSE, 
+  message = FALSE,
+  fig.width = 10, 
+  fig.height = 6
+)
+
+if(!require(tidyverse)) {
+  library(dplyr)
+  library(ggplot2)
+  library(readr)
+  library(tidyr)
+  library(stringr)
+  library(tibble)
+  library(lubridate)
+}
+```
+
+# Introduction
+
+This analysis explores the **Meteorite Landings** dataset (available from NASA/Kaggle), focusing on the spatial distribution, mass composition, and temporal frequency of meteorite impacts on Earth.
+
+We will analyze: - **Spatial Distribution**: Where do meteorites fall? - **Mass Analysis**: What is the size distribution of impactors? - **Temporal Trends**: Has the frequency of discovered meteorites changed over time? - **Classification**: What types of meteorites are most common?
+
+# Load Required Libraries
+
+```{r libraries}
+packages <- c("lubridate", "plotly", "viridis", "scales", "ggridges", "maps", "corrplot", "dplyr", "ggplot2")
+
+new_packages <- packages[!(packages %in% installed.packages()[,"Package"])]
+if(length(new_packages)) install.packages(new_packages)
+
+# Load libraries
+library(lubridate)
+library(plotly)
+library(viridis)
+library(scales)
+library(ggridges)
+library(maps)
+library(corrplot)
+library(dplyr)
+library(ggplot2)
+```
+
+# Data Loading and Preparation
+
+We load `Meteorite_Landings.csv`. If the file is unavailable, we generate a synthetic dataset based on statistical properties of known meteorite falls.
+
+```{r data-preparation}
+data_file <- "Meteorite_Landings.csv"
+
+if (file.exists(data_file)) {
+  # --- Load Real Data ---
+  raw_data <- read.csv(data_file)
+  
+  # Clean and Prepare Data
+  meteorite_data <- raw_data %>%
+    filter(!is.na(reclat) & !is.na(reclong)) %>% # Remove missing coordinates
+    filter(year >= 860 & year <= 2025) %>%       # Filter reasonable years
+    filter(mass..g. > 0) %>%                     # Filter valid mass
+    rename(
+      name = name,
+      id = id,
+      class = recclass,
+      mass_g = mass..g.,
+      fall_status = fall,
+      year = year,
+      latitude = reclat,
+      longitude = reclong
+    ) %>%
+    mutate(
+      log_mass = log10(mass_g + 1) # Log transformation for visualization
+    )
+
+} else {
+  # --- Generate Synthetic Data ---
+  message("Dataset not found. Generating SYNTHETIC Meteorite Data.")
+  set.seed(13260) # Student ID seed
+  n_meteorites <- 1500
+  
+  # Meteorite Classes (simplified)
+  classes <- c("L6", "H5", "L5", "H6", "H4", "Iron", "CM2", "L4")
+  probs <- c(0.3, 0.2, 0.15, 0.15, 0.05, 0.05, 0.05, 0.05)
+  
+  meteorite_data <- tibble(
+    id = 1:n_meteorites,
+    name = paste0("Meteorite-", 1:n_meteorites),
+    class = sample(classes, n_meteorites, replace = TRUE, prob = probs),
+    fall_status = sample(c("Fell", "Found"), n_meteorites, replace = TRUE, prob = c(0.1, 0.9)),
+    
+    # Mass follows log-normal distribution (many small, few huge)
+    mass_g = 10^rnorm(n_meteorites, mean = 2, sd = 1.5), 
+    
+    # Year: More finds in recent years, but falls uniform
+    year = round(runif(n_meteorites, 1800, 2024)),
+    
+    # Location: Global scatter, but more bias to land masses for "Found"
+    longitude = runif(n_meteorites, -180, 180),
+    latitude = runif(n_meteorites, -70, 70) # Avoid extreme poles for simpler viz
+  ) %>%
+    mutate(
+      mass_g = pmax(1, mass_g), # Min mass 1g
+      log_mass = log10(mass_g),
+      # Add random "continent" bias roughly
+      region = case_when(
+        longitude > -130 & longitude < -60 & latitude > 20 ~ "North America",
+        longitude > -20 & longitude < 40 & latitude > 35 ~ "Europe/Africa",
+        longitude > 60 & longitude < 120 & latitude > 0 ~ "Asia",
+        TRUE ~ "Other/Ocean"
+      )
+    )
+}
+
+# Add derived categorization for Mass
+meteorite_data <- meteorite_data %>%
+  mutate(
+    mass_category = cut(mass_g, 
+                        breaks = c(0, 10, 100, 1000, 10000, Inf),
+                        labels = c("<10g", "10-100g", "100g-1kg", "1kg-10kg", ">10kg"))
+  )
+
+glimpse(meteorite_data)
+```
+
+# Spatial Analysis
+
+## Global Distribution Map (Simplified)
+
+Locations of meteorites, colored by their mass (log scale). Larger circles indicate heavier meteorites.
+
+```{r static-map, fig.width=12, fig.height=7}
+# Get world map using base maps package
+world_map <- map_data("world")
+
+ggplot() +
+  geom_polygon(data = world_map, aes(x = long, y = lat, group = group), 
+               fill = "#2d3436", color = "#636e72", size = 0.1) +
+  geom_point(data = meteorite_data, 
+             aes(x = longitude, y = latitude, color = log_mass, size = log_mass),
+             alpha = 0.7) +
+  scale_color_viridis_c(option = "magma", name = "Log Mass (g)") +
+  scale_size_continuous(range = c(0.5, 3), guide = "none") +
+  labs(
+    title = "Global Meteorite Locations",
+    subtitle = "Points colored by log10(Mass)",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.background = element_rect(fill = "#1e272e", color = NA),
+    panel.background = element_rect(fill = "#1e272e", color = NA),
+    text = element_text(color = "white"),
+    axis.text = element_text(color = "#b2bec3"),
+    panel.grid = element_line(color = "#636e72", linetype = "dotted")
+  )
+```
+
+## Global Distribution Heatmap
+
+```{r density-heatmap, fig.width=12, fig.height=7}
+ggplot() +
+  geom_polygon(data = world_map, aes(x = long, y = lat, group = group), 
+               fill = "#2d3436", color = "#636e72", size = 0.1) +
+  stat_density_2d(
+    data = meteorite_data,
+    aes(x = longitude, y = latitude, fill = after_stat(level)),
+    geom = "polygon",
+    alpha = 0.6,
+    bins = 15
+  ) +
+  scale_fill_viridis_c(option = "plasma", name = "Density") +
+  labs(
+    title = "Global Meteorite Discovery Density",
+    subtitle = "Concentration of recorded meteorite landings",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.background = element_rect(fill = "#1e272e", color = NA),
+    panel.background = element_rect(fill = "#1e272e", color = NA),
+    text = element_text(color = "white"),
+    axis.text = element_text(color = "#b2bec3"),
+    panel.grid = element_line(color = "#636e72", linetype = "dotted")
+  )
+```
+
+# Mass Analysis
+
+## Distribution of Meteorite Mass
+
+The mass of meteorites typically follows a power-law distribution (many small ones, very few large ones).
+
+```{r mass-dist, fig.width=10, fig.height=6}
+ggplot(meteorite_data, aes(x = mass_g)) +
+  geom_histogram(bins = 50, fill = "#6c5ce7", color = "white", alpha = 0.8) +
+  scale_x_log10(labels = comma) + # Log scale X axis
+  labs(
+    title = "Distribution of Meteorite Masses",
+    subtitle = "Note: X-axis is on a Logarithmic Scale",
+    x = "Mass (grams)",
+    y = "Count"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.background = element_rect(fill = "#1e272e", color = NA),
+    panel.background = element_rect(fill = "#1e272e", color = NA),
+    text = element_text(color = "white"),
+    axis.text = element_text(color = "#b2bec3")
+  )
+```
+
+## Mass by Classification
+
+```{r mass-boxplot, fig.width=12, fig.height=8}
+# Select top 10 most common classes
+top_classes <- meteorite_data %>%
+  count(class) %>%
+  top_n(10, n) %>%
+  pull(class)
+
+meteorite_subset <- meteorite_data %>%
+  filter(class %in% top_classes)
+
+ggplot(meteorite_subset, aes(x = reorder(class, mass_g, FUN = median), y = mass_g, fill = class)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.8) +
+  scale_y_log10(labels = comma) +
+  scale_fill_viridis_d(option = "turbo") +
+  coord_flip() +
+  labs(
+    title = "Mass Distribution by Meteorite Class",
+    subtitle = "Top 10 most common classes",
+    x = "Class",
+    y = "Mass (g) [Log Scale]"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.background = element_rect(fill = "#1e272e", color = NA),
+    panel.background = element_rect(fill = "#1e272e", color = NA),
+    text = element_text(color = "white"),
+    axis.text = element_text(color = "#b2bec3"),
+    legend.position = "none"
+  )
+```
+
+# Temporal Analysis
+
+## Discoveries Over Time
+
+```{r time-series, fig.width=12, fig.height=6}
+yearly_counts <- meteorite_data %>%
+  filter(year >= 1900) %>% # Focus on modern era
+  count(year)
+
+# Interactive plot disabled due to missing system libraries for webshot
+# Using standard ggplot instead
+p <- ggplot(yearly_counts, aes(x = year, y = n)) +
+  geom_line(color = "#00cec9", size = 1) +
+  geom_area(fill = "#00cec9", alpha = 0.2) +
+  geom_smooth(method = "loess", color = "#ffeaa7", se = FALSE, alpha = 0.5) +
+  labs(
+    title = "Meteorite Discoveries per Year (1900-Present)",
+    x = "Year",
+    y = "Number of Meteorites"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.background = element_rect(fill = "#1e272e", color = NA),
+    panel.background = element_rect(fill = "#1e272e", color = NA),
+    text = element_text(color = "white"),
+    axis.text = element_text(color = "#b2bec3")
+  )
+
+p
+```
+
+# Conclusion
+
+This analysis of the Meteorite Landings data highlights:
+
+1.  **Global Reach**: Meteorites are found on every continent, though discovery rates are biased towards densely populated areas or expeditions (e.g., deserts, Antarctica).
+2.  **Mass Rarity**: The vast majority of meteorites are small (\<1 kg). Large impactors (\>100 kg) are exceptionally rare events.
+3.  **Temporal Increase**: The rate of meteorite discoveries has increased significantly in the last century, likely due to better detection technology and organized searches, rather than an increase in fall rate.
