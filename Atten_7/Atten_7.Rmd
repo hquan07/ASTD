@@ -1,0 +1,729 @@
+---
+title: "Analysis of<br>Spatial & Temporal Data"
+subtitle: <span style="color:dodgerblue">Frequentist Statistical Inference & Statistical Testing</span>
+author: "22BA13260 - Tran Huy Quan"
+date: "`r Sys.Date()`"
+output: 
+  rmdformats::readthedown:
+    highlight: espresso
+    code_download: TRUE
+    code_folding: show
+    number_sections: TRUE
+    dev: "svg"
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.dim = c(8, 6), fig.align = "center", out.width = "100%")
+```
+
+```{r klippy, echo=FALSE, include=TRUE}
+klippy::klippy(c('r', 'python', 'json', 'linux'), position = c('top', 'right'),
+               tooltip_message = 'Click to copy', tooltip_success = 'Copied')
+```
+
+------------------------------------------------------------------------
+
+# Background & Introduction
+
+## Randomization & Sampling
+
+-   An essential concept in statistics is the idea that the data we analyze has been **collected randomly**.
+
+-   We envision a **population**, which encompasses **all possible observations under consideration**, and we frequently calculate population summary statistics (e.g., mean, median, standard deviation, etc.).
+
+-   However, it’s common to lack data on every individual within the population, forcing us to reply on a **sample**.
+
+    -   A sample is a **subset of a population** from which information is collected.
+
+    -   A sample serves as a **representative sample** of the entire population.
+
+    -   Quantities derived from the sample (known as **sample statistics**) are reasonable estimates of the corresponding population quantities (called **population parameters**).
+
+-   The selection process ensures that the sample is **representative of the population** and that **there are no hidden correlations between variables**.
+
+## Sampling Techniques
+
+### Simple Random Sampling - SRS
+
+-   **SRS** is when every sample of **size** $n$ **is equally likely**.
+
+    -   almost always implemented as **randomly** selecting member of the population is equally-likely to be chosen.
+
+    -   ensure that every member of the population is selected **independently**.
+
+-   E.g., taking an university of having $30,000$ students enrolled to be our population of which we would like to selected $1,000$ as a sample.
+
+    -   To use SRS, we would assign every member of the population a value ${1, 2, 3, … 30,000}$ and then draw numbers, *without replacement*, from our list of values.
+
+    -   Such random numbers can be drawn using a **random of generator**, or traditionally through the use of a **random number table**.
+
+```{r, eval=FALSE}
+sample(1:30000, 1000, replace=FALSE)
+```
+
+-   $\Rightarrow$ This method ensure that we obtain a random sampling drawn from the entire University. What we cannot do is draw a student, then also draw all of their siblings.
+
+## Random Cluster Sampling - RCS
+
+-   **RCS** draws **entire clusters** based on a **division of the population**.
+
+    -   the idea is perform a **hierarchical sampling** where that we will **use a SRS to select clusters** and then **observe individual in that cluster**.
+
+    -   E.g., if we were taking a sample of students, we might first select a certain set of classes and then interview every student in each class.
+
+    -   E.g., a tree ecologist randomly select GIS locations in a study area and then measure every tree within 20 meters of the location.
+
+    -   E.g., cluster sampling separately for 63 provinces, each is imbalanced in size.
+
+-   Cluster sampling is usually done to make it more convenient to carry out the sample, but **introduces correlation among the observations** that will need to be accounted for in the statistical analysis (e.g., using mixed models).
+
+-   Although this type of sampling is **easier to produce larger samples with less randomization**, we can see that clusters **can be highly imbalanced**, and it is unlikely that clustering will allow me to **sub-sample from the entire population**.
+
+## Stratified Sampling - SS
+
+-   SS draws samples using proportionality based on **homogeneous groupings** known as **strata**.
+
+    -   often easy to confuse Clustering & Stratified sampling.
+
+    -   the major difference here is that we will draw random samples from within the *strata*, unlike clustering where we take all individuals from the chosen clusters.
+
+    -   E.g., consider for exampling producing a random stratified sample using sex as our *strata*.
+        Here, our homogeneous grouping is simply sex.
+        Other examples might include stratifying animals by breed, stratifying the atmosphere by height above ground, or stratifying soil by depth.
+
+-   The main idea behind a strata is **every member should be homogenized**:
+
+    -   in our example, we homogenized by ‘Male’ and ‘Female’.
+
+    -   must ensure that when we draw a random sample, we obtain a sub-sample that has nearly equivalent proportions to that observed in the population.
+
+    -   **or, if we do sub-sampling, then our sample proportions will necessarily be the same as our population proportions.**
+
+## Venn diagrams & Probability Rules
+
+-   **Venn diagrams**:
+
+    -   **Union**: Denote the event that either $A$ or $B$ occurs as $A \bigcup B$
+
+    -   **Complement**: Denote the event that $A$ does not occur as $\bar{A}$ or $A^C$ (different people use different notations)
+
+    -   **Intersection**: Denote the event that both $A$ and $B$ occur as $A \bigcap B$
+
+    -   **Definition**: Two events $A$ and $B$ are said to be **mutually exclusive** (or **disjoint**) if the occurrence of on event precludes the occurrence of the other.
+        For example, on a single roll of a die, a two and a five cannot both come up.
+        For a second example, define $A$ to be event that the die is even, and $B$ to be the event that the die com up as a \$5%.
+
+-   **Probability Rules**:
+
+    -   **Definition**: The **probability** is the proportion of times an events occurs in many repeated trials of a random phenomenon.
+        In other words, it is the long-term relative frequency.
+
+    -   **Rule**: For any event $A$ the probability of the event $P(A)$ satisfies $0 \le P(A) \le 1$.
+        That is to say, the probability of any event will always lie in the interval $[0, 1]$.
+
+        $\Rightarrow$ Because $S$ is the set of all events that might occur, the area of our bounding rectangle will be $1$ and the probability of event A occurring will be represented by the area in the circle $A$.
+
+    -   **Rule**: The probability of the set of all events ($S$) is always $1$.
+        That is, $P(S) = 1$
+
+    -   **General Addition Rule**:
+
+$$P(A \bigcup B) = P(A) + P(B) - P(A \bigcap B)$$ $\Rightarrow$ The reason behind this fact is that if thee is if $A$ and $B$ are not disjoint, then some area is added twice when I calculate $P(A) + P(B)$.
+To account fo this, I simply subtract off the area that was double counted.
+
+$$\dots\, to\, be\, added\, later\, \dots$$
+
+------------------------------------------------------------------------
+
+# Elements of any Hypothesis Test
+
+```{r, echo=FALSE, warning=FALSE}
+# Load necessary library
+library(ggplot2)
+
+# 1. Setup Parameters
+mu0 <- 0          # Mean of Null Hypothesis
+muA <- 2.5        # Mean of Alternative Hypothesis
+sd <- 1           # Standard deviation
+alpha <- 0.05     # Significance level
+crit_val <- qnorm(1 - alpha, mean = mu0, sd = sd) # Critical value for one-tailed test
+
+# 2. Create data for the curves
+x <- seq(-4, 6, length.out = 1000)
+df <- data.frame(
+  x = x,
+  y0 = dnorm(x, mean = mu0, sd = sd),
+  yA = dnorm(x, mean = muA, sd = sd)
+)
+
+# 3. Create the Plot
+ggplot(df, aes(x = x)) +
+  # Draw the two curves
+  geom_line(aes(y = y0), color = "dodgerblue", size = 1) +
+  geom_line(aes(y = yA), color = "orange", size = 1) +
+  # Shading Alpha (Type I Error) - Horizontal lines pattern simulation
+  geom_area(data = subset(df, x >= crit_val), aes(y = y0), fill = "#8B475D", alpha = 0.3) +
+  # Shading Beta (Type II Error) - Vertical lines pattern simulation
+  geom_area(data = subset(df, x <= crit_val), aes(y = yA), fill = "#8B475D", alpha = 0.1) +
+  # Add the Critical Value vertical line
+  geom_vline(xintercept = crit_val, color = "red", linetype = "solid") +
+  # Add the X-axis line
+  geom_hline(yintercept = 0, color = "#8B475D") +
+  # Annotations: Null and Alt text
+  annotate("text", x = -1.5, y = 0.42, label = "Probability density\nfunction of the null\ndistribution", color = "#8B475D", size = 3.5) +
+  annotate("text", x = 2.5, y = 0.42, label = "Probability density function of\nthe distribution of the test\nstatistic if a specific HA is true", color = "#8B475D", size = 3.5) +
+  # Annotations: Hypotheses
+  annotate("text", x = 5, y = 0.42, label = "H[0]: mu[0]", parse = TRUE, color = "#8B475D", size = 5, hjust = 0) +
+  annotate("text", x = 5, y = 0.38, label = "H[A]: mu > mu[0]", parse = TRUE, color = "#8B475D", size = 5, hjust = 0) +
+  # Annotations: Alpha and Beta labels
+  annotate("text", x = 0.8, y = 0.15, label = "Area = beta", parse = TRUE, color = "#8B475D") +
+  annotate("text", x = 3, y = 0.15, label = "Area = 0.05 = alpha", parse = TRUE, color = "#8B475D") +
+  # Annotations: Critical Value and Rejection Region
+  annotate("text", x = crit_val, y = -0.02, label = "Critical Value", color = "#8B475D", vjust = 1) +
+  annotate("segment", x = crit_val, xend = 5.5, y = -0.02, yend = -0.02, 
+           arrow = arrow(length = unit(0.2, "cm")), color = "#8B475D") +
+  annotate("text", x = 3.5, y = -0.015, label = "Rejection Region", color = "#8B475D", vjust = 0) +
+  # Arrows for labels
+  annotate("segment", x = -1.5, y = 0.38, xend = -0.5, yend = 0.3, arrow = arrow(length = unit(0.2, "cm")), color = "#8B475D") +
+  annotate("segment", x = 2.5, y = 0.38, xend = 2.5, yend = 0.3, arrow = arrow(length = unit(0.2, "cm")), color = "#8B475D") +
+  
+  # Theme adjustments to make it look like the image
+  theme_void() +
+  theme(plot.margin = margin(20, 20, 20, 20))
+```
+
+## Test levels
+
+## p-values
+
+## Error Types & Power
+
+## One-sided vs. Two sided
+
+## Confidence Intervals
+
+## Practice
+
+-   Your friend is trying to convince you to buy early-bird tickets for a indoor party during your trip in USTH, (s)he claims that **on average 6 out of 7 days, the weather is cloudy**.
+
+-   🧐 You want to check **whether (s)he is right or not**, in case you don't have a weather forecast available.
+
+-   🙄 Suppose, someone gives you a collection of **25 independent days' weather information (15 days are cloudy)**, this is all you have.
+
+-   Let’s list out **The Elements of any Hypothesis Test**:
+
+    -   Test statistic
+
+    -   Null hypothesis, $H_0$
+
+    -   Alternative hypothesis, $H_A$ (often as simple as "$H_0$ is not true")
+
+    -   One-sided or Two-sided Test
+
+    -   Null distribution, the sampling distribution for the test statistic if $H_0$ is true
+
+    -   Compare the observed test statistic to the null distribution
+
+------------------------------------------------------------------------
+
+-   Test statistic: $X = 15\, out\, of\, 25$
+
+-   Null hypothesis, $H_0$: $p_cloudy = 0.857$
+
+-   Alternative hypothesis, $H_A$ (often as simple as "$H_0$ is not true"): $H_A$ is that $p_{cloudy} \le 0.857 \Rightarrow p_{cloudy} \ge 0.857\, in\, favour\, of\, your\, friend's$
+
+-   One-sided or Two-sided Test: $One-sided\, test$
+
+-   Null distribution, the sampling distribution for the test statistic if $H_0$ is true: $Binomial\, distribution$, with $p = 0.857, N=25$
+
+```{r}
+binom.test(15, 25, p=0.857, alternative = "less")
+pbinom(15, 25, 0.857, lower.tail = FALSE)
+1 - pbinom(15, 25, 0.857, lower.tail = FALSE)
+```
+
+------------------------------------------------------------------------
+
+# One sample t-test
+
+## Theory & Example
+
+The One-Sample t-test is used to determine whether the mean of a single group is significantly different from a known or hypothesized population mean ($\mu_0$).
+
+**When to use it?**
+
+Imagine a bakery claims their loaves of bread weigh exactly 500g.
+You buy 15 loaves, weigh them, and find the average is 495g.
+
+-   Is that 5g difference just random luck (sampling error)?
+
+-   Or is the bakery actually under-filling the bread?
+
+**The Hypotheses**
+
+-   Null Hypothesis ($H_0$): $\mu = 500$ (The mean weight is exactly what they claim).
+
+-   Alternative Hypothesis ($H_A$): $\mu \ne 500$ (The mean weight is different).
+
+**Assumptions**
+
+-   Independence: Each loaf was weighed independently.
+
+-   Normality: The data should be approximately normally distributed (especially for small samples).
+
+-   Continuous Data: The weights are measured on a continuous scale.
+
+```{r}
+# Create the Data:
+#   generating 15 random weights with a mean of 494g and a bit of variation.
+
+# Set seed for reproducibility (so you get the same numbers I do)
+set.seed(123)
+
+# Create a vector of 15 bread weights
+bread_weights <- rnorm(n = 15, mean = 494, sd = 5)
+
+# View the data
+print(bread_weights)
+```
+
+```{r}
+# Visualize (The "Look" Before you Leap" Rule)
+#   Before running a test, always look at your data to check for outliers or non-normality.
+
+# Convert to data frame for ggplot
+df <- data.frame(weight = bread_weights)
+
+ggplot(df, aes(x = weight)) +
+  geom_histogram(bins = 6, fill = "steelblue", color = "white") +
+  geom_vline(xintercept = 500, color = "red", linetype = "dashed") +
+  labs(title = "Distribution of Bread Weights",
+       subtitle = "Red line = Claimed Mean (500g)",
+       x = "Weight (g)", y = "Frequency") +
+  theme_minimal()
+```
+
+```{r}
+# Run the One-Sample t-test
+
+# Perform the test
+results <- t.test(bread_weights, mu = 500)
+
+# Display the results
+results
+```
+
+**Interpreting the Output**
+
+When you run t.test(), R gives you several key pieces of information:
+
+1.  $t = -4.7997$: This is the test statistic.
+    It tells you how many standard errors the sample mean is from the claimed mean.
+
+2.  $df = 14$: Degrees of freedom (Sample size $n - 1$).
+
+3.  $p-value = 0.0002$: Since this is much smaller than 0.05, we reject the **Null Hypothesis**.
+    There is statistically significant evidence that the bread weighs less than 500g.
+
+4.  $95\, percent\, confidence\, interval$: $R$ tells you that the $true$ mean likely falls between roughly $490.8g$ and $496.7g$.
+    Since $500$ is not in this range, the claim is likely false.
+
+$\Rightarrow$ The average weight of the bread was `r round(mean(bread_weights), 2)`g.
+Because the p-value was `r format.pval(results$p.value)`, we conclude the bakery is under-filling the bread.
+
+## Practices
+
+### Practice 0.1: The bakery - continue 1
+
+**Let's try to make the above experiments again, but instead of buying 15 loaves, you try two buy only 3, 5 or 10.**
+
+```{r}
+# Testing with n = 3
+set.seed(123)
+bread_3 <- rnorm(n = 3, mean = 494, sd = 5)
+result_3 <- t.test(bread_3, mu = 500)
+print(result_3)
+
+# Testing with n = 5
+set.seed(123)
+bread_5 <- rnorm(n = 5, mean = 494, sd = 5)
+result_5 <- t.test(bread_5, mu = 500)
+print(result_5)
+
+# Testing with n = 10
+set.seed(123)
+bread_10 <- rnorm(n = 10, mean = 494, sd = 5)
+result_10 <- t.test(bread_10, mu = 500)
+print(result_10)
+
+# Compare p-values across sample sizes
+comparison <- data.frame(
+  Sample_Size = c(3, 5, 10, 15),
+  P_Value = c(result_3$p.value, result_5$p.value, result_10$p.value, results$p.value),
+  Significant = c(result_3$p.value < 0.05, result_5$p.value < 0.05, 
+                  result_10$p.value < 0.05, results$p.value < 0.05)
+)
+print(comparison)
+
+# Visualization
+ggplot(comparison, aes(x = Sample_Size, y = P_Value)) +
+  geom_line(color = "steelblue", size = 1) +
+  geom_point(aes(color = Significant), size = 4) +
+  geom_hline(yintercept = 0.05, linetype = "dashed", color = "red") +
+  annotate("text", x = 12, y = 0.07, label = "α = 0.05", color = "red") +
+  scale_color_manual(values = c("TRUE" = "green", "FALSE" = "orange")) +
+  labs(title = "Effect of Sample Size on Statistical Power",
+       x = "Sample Size (n)", y = "P-Value") +
+  theme_minimal()
+```
+
+**Interpretation:**
+
+```{r}
+# Conclusion: As sample size increases, p-value decreases. 
+# With n=3, we cannot detect the difference (p > 0.05). 
+# With n=10 and n=15, we have enough statistical power to reject H0.
+```
+
+---
+
+### Practice 0.2: The bakery - continue 2
+
+**Let's try to change the number of `set.seed()` and see what will be happened?**
+
+```{r}
+# Testing with different seeds
+seeds <- c(123, 456, 789, 999, 42)
+results_list <- list()
+
+for (s in seeds) {
+  set.seed(s)
+  bread_temp <- rnorm(n = 15, mean = 494, sd = 5)
+  test_temp <- t.test(bread_temp, mu = 500)
+  results_list[[as.character(s)]] <- data.frame(
+    Seed = s,
+    Sample_Mean = mean(bread_temp),
+    P_Value = test_temp$p.value,
+    Significant = test_temp$p.value < 0.05
+  )
+}
+
+seed_comparison <- do.call(rbind, results_list)
+print(seed_comparison)
+
+# Visualization
+ggplot(seed_comparison, aes(x = factor(Seed), y = P_Value, fill = Significant)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 1) +
+  scale_fill_manual(values = c("TRUE" = "forestgreen", "FALSE" = "coral")) +
+  labs(title = "P-Values Across Different Random Seeds",
+       x = "Random Seed", y = "P-Value") +
+  theme_minimal()
+```
+
+**Interpretation:**
+
+```{r}
+# Conclusion: Different random seeds produce different samples, 
+# leading to variation in p-values. This demonstrates sampling variability.
+```
+
+---
+
+### Practice 1: The "Gold Standard"
+
+A lightbulb manufacturer claims their "LongLife" bulbs last for 1,200 hours.
+You test 10 bulbs and record the following lifespans: `1180, 1190, 1210, 1150, 1140, 1200, 1170, 1185, 1160, 1195`
+
+**Tasks**:
+
+1.  Create a vector with these values.
+2.  Use `t.test()` to determine if the mean lifespan is significantly different from the claimed 1,200 hours.
+3.  Based on a `p-value` threshold of $0.05$, should you reject the manufacturer's claim?
+
+```{r}
+# 1. Create the vector
+lifespans <- c(1180, 1190, 1210, 1150, 1140, 1200, 1170, 1185, 1160, 1195)
+
+# Visualize the data first
+df_bulbs <- data.frame(lifespan = lifespans)
+ggplot(df_bulbs, aes(x = lifespan)) +
+  geom_histogram(bins = 6, fill = "gold", color = "black", alpha = 0.7) +
+  geom_vline(xintercept = 1200, color = "red", linetype = "dashed", size = 1) +
+  geom_vline(xintercept = mean(lifespans), color = "blue", size = 1) +
+  annotate("text", x = 1205, y = 2.5, label = "Claimed: 1200h", color = "red") +
+  annotate("text", x = mean(lifespans)-5, y = 2.5, label = paste("Observed:", round(mean(lifespans),1), "h"), color = "blue") +
+  labs(title = "Lightbulb Lifespan Distribution", x = "Lifespan (hours)", y = "Count") +
+  theme_minimal()
+
+# 2. Run the t-test
+gold_test <- t.test(lifespans, mu = 1200)
+print(gold_test)
+
+# 3. Decision
+cat("\nDECISION:\n")
+cat("Sample mean:", round(mean(lifespans), 2), "hours\n")
+cat("P-value:", round(gold_test$p.value, 4), "\n")
+cat("95% CI: [", round(gold_test$conf.int[1], 2), ",", round(gold_test$conf.int[2], 2), "]\n")
+
+if (gold_test$p.value < 0.05) {
+  cat("Conclusion: REJECT the manufacturer's claim (p < 0.05)\n")
+  cat("The bulbs last significantly LESS than 1200 hours on average.\n")
+} else {
+  cat("Conclusion: FAIL TO REJECT the claim (p >= 0.05)\n")
+}
+```
+
+**Key Insights:**
+
+- The sample mean (`r round(mean(lifespans), 1)` hours) is less than the claimed 1200 hours
+- The p-value (`r round(gold_test$p.value, 4)`) is less than 0.05
+- The 95% CI does NOT include 1200, confirming our rejection
+
+---
+
+### Practice 2: Checking Your Assumptions
+
+You are analyzing the height of a specific type of rare plant.
+The hypothesized average height is $15 cm$.
+You have collected data for $25 plants$.
+
+```{r}
+set.seed(456)
+plant_heights <- rnorm(25, mean = 14.2, sd = 2)
+```
+
+**Tasks**:
+
+1.  Before running the `t-test()`, check the Normality assumption using a Q-Q Plot (`qqnorm(plant_heights)` and `qqline(plant_heights)`).
+2.  Run the one-sample `t-test()`.
+3.  Look at the **95% Confidence Interval** in the output.
+    Does it include the value 15?
+    What does this tell you?
+
+```{r}
+set.seed(456)
+plant_heights <- rnorm(25, mean = 14.2, sd = 2)
+
+# 1. Check Normality - Visual Methods
+par(mfrow = c(1, 2))
+# Q-Q Plot
+qqnorm(plant_heights, main = "Q-Q Plot: Plant Heights")
+qqline(plant_heights, col = "red", lwd = 2)
+# Histogram with normal curve
+hist(plant_heights, freq = FALSE, main = "Histogram with Normal Curve",
+     xlab = "Height (cm)", col = "lightgreen")
+curve(dnorm(x, mean = mean(plant_heights), sd = sd(plant_heights)), 
+      add = TRUE, col = "red", lwd = 2)
+par(mfrow = c(1, 1))
+
+# Shapiro-Wilk test for normality
+shapiro_test <- shapiro.test(plant_heights)
+cat("Shapiro-Wilk Normality Test:\n")
+cat("W =", round(shapiro_test$statistic, 4), ", p-value =", round(shapiro_test$p.value, 4), "\n")
+if (shapiro_test$p.value > 0.05) {
+  cat("Conclusion: Data appears normally distributed (p > 0.05)\n\n")
+} else {
+  cat("Conclusion: Data may NOT be normally distributed (p < 0.05)\n\n")
+}
+
+# 2. Run the t-test
+plant_test <- t.test(plant_heights, mu = 15)
+print(plant_test)
+
+# 3. Look at the Confidence Interval
+cat("\nCONFIDENCE INTERVAL ANALYSIS:\n")
+ci_lower <- plant_test$conf.int[1]
+ci_upper <- plant_test$conf.int[2]
+cat("95% CI: [", round(ci_lower, 2), ",", round(ci_upper, 2), "]\n")
+
+if (15 >= ci_lower & 15 <= ci_upper) {
+  cat("The value 15 IS inside the confidence interval.\n")
+  cat("This aligns with our failure to reject H0 at α = 0.05.\n")
+} else {
+  cat("The value 15 is NOT inside the confidence interval.\n")
+  cat("This aligns with rejecting H0 at α = 0.05.\n")
+}
+
+# Visualization
+ggplot(data.frame(height = plant_heights), aes(x = height)) +
+  geom_density(fill = "lightgreen", alpha = 0.6) +
+  geom_vline(xintercept = 15, color = "red", linetype = "dashed", size = 1) +
+  geom_vline(xintercept = mean(plant_heights), color = "blue", size = 1) +
+  annotate("text", x = 15.3, y = 0.15, label = "H0: μ = 15", color = "red") +
+  annotate("text", x = mean(plant_heights)-0.3, y = 0.15, 
+           label = paste("x̄ =", round(mean(plant_heights), 2)), color = "blue") +
+  labs(title = "Distribution of Plant Heights", x = "Height (cm)", y = "Density") +
+  theme_minimal()
+```
+
+**Conclusion:** The p-value (`r round(plant_test$p.value, 4)`) is just above 0.05, indicating a **borderline** result. The CI barely includes 15, so we **fail to reject** the null hypothesis, but the evidence is weak.
+
+---
+
+### Practice 3: The Impact of Sample Size
+
+You want to see how sample size affects your ability to detect a difference (Statistical Power).
+
+**Tasks**:
+
+1.  Generate a small sample ($n=5$) with a mean of $105$ and SD of $10$.
+    Test it against $H_0: \mu = 100$.
+
+2.  Generate a larger sample ($n=100$) with the same parameters.
+    Test it against $H_0: \mu = 100$.
+
+3.  Even though both samples came from the same population $mean(105)$, which one resulted in a significant p-value?
+    Why?
+
+```{r}
+set.seed(123)
+small_sample <- rnorm(5, mean = 105, sd = 10)
+large_sample <- rnorm(100, mean = 105, sd = 10)
+
+# Test small sample
+small_test <- t.test(small_sample, mu = 100)
+cat("SMALL SAMPLE (n=5):\n")
+print(small_test)
+
+# Test large sample
+large_test <- t.test(large_sample, mu = 100)
+cat("\nLARGE SAMPLE (n=100):\n")
+print(large_test)
+
+# Create comparison table
+power_comparison <- data.frame(
+  Sample_Size = c(5, 100),
+  Sample_Mean = c(mean(small_sample), mean(large_sample)),
+  Sample_SD = c(sd(small_sample), sd(large_sample)),
+  Standard_Error = c(sd(small_sample)/sqrt(5), sd(large_sample)/sqrt(100)),
+  T_Statistic = c(small_test$statistic, large_test$statistic),
+  P_Value = c(small_test$p.value, large_test$p.value),
+  Significant = c(small_test$p.value < 0.05, large_test$p.value < 0.05)
+)
+print(power_comparison)
+
+# Visualization
+ggplot(power_comparison, aes(x = factor(Sample_Size), y = Standard_Error, fill = Significant)) +
+  geom_bar(stat = "identity", width = 0.5) +
+  scale_fill_manual(values = c("TRUE" = "forestgreen", "FALSE" = "coral")) +
+  labs(title = "Standard Error Decreases with Larger Sample Size",
+       subtitle = "SE = s/√n → Smaller SE = More precise estimate = More powerful test",
+       x = "Sample Size", y = "Standard Error") +
+  theme_minimal()
+```
+
+**Comparison and Explanation:**
+
+```{r}
+# Conclusion: The large sample (n=100) has enough statistical power to detect
+# the 5-unit difference, while the small sample (n=5) lacks power.
+```
+
+**Key Insight - Why Sample Size Matters:**
+
+$$SE = \frac{s}{\sqrt{n}}$$
+
+- As $n$ increases, the **Standard Error (SE)** decreases
+- Smaller SE means the **sampling distribution is narrower**
+- This makes it easier to detect small differences from the null hypothesis
+- The large sample (n=100) has enough **statistical power** to detect the 5-unit difference
+- The small sample (n=5) lacks power, even though the true mean is different
+
+---
+
+### Practice 4: One-Sided vs. Two-Sided
+
+A student claims they spend at least $5$ hours a day studying.
+You suspect they actually spend less time than that.
+You survey $12$ days and find an average of $4.2$ hours with a standard deviation of $1.2$.
+
+```{r}
+# Data generation
+study_hours <- c(3.5, 4.0, 5.2, 3.8, 4.1, 4.5, 3.9, 5.0, 3.2, 4.4, 4.6, 4.2)
+```
+
+**Tasks**:
+
+1.  Perform a *one-sided* `t-test`.
+    In $R$, use the argument `alternative = "less"` inside the `t.test()` function.
+
+2.  Compare the `p-value` of this *one-sided* test to a standard *two-sided* test (`alternative = "two.sided"`).
+
+3.  Which test is more "powerful" (gives a smaller p-value) in this specific scenario?
+
+```{r}
+# Data generation
+study_hours <- c(3.5, 4.0, 5.2, 3.8, 4.1, 4.5, 3.9, 5.0, 3.2, 4.4, 4.6, 4.2)
+
+# Visualize the data
+ggplot(data.frame(hours = study_hours), aes(x = hours)) +
+  geom_histogram(bins = 6, fill = "steelblue", color = "white", alpha = 0.7) +
+  geom_vline(xintercept = 5, color = "red", linetype = "dashed", size = 1) +
+  geom_vline(xintercept = mean(study_hours), color = "blue", size = 1) +
+  annotate("text", x = 5.15, y = 2.5, label = "Claimed: 5h", color = "red") +
+  annotate("text", x = mean(study_hours)-0.15, y = 2.5, 
+           label = paste("Observed:", round(mean(study_hours), 2), "h"), color = "blue") +
+  labs(title = "Distribution of Study Hours", x = "Hours per Day", y = "Frequency") +
+  theme_minimal()
+
+# 1. One-sided test (Lower tail)
+one_sided <- t.test(study_hours, mu = 5, alternative = "less")
+cat("ONE-SIDED TEST (H_A: μ < 5):\n")
+print(one_sided)
+
+# 2. Two-sided test
+two_sided <- t.test(study_hours, mu = 5, alternative = "two.sided")
+cat("\nTWO-SIDED TEST (H_A: μ ≠ 5):\n")
+print(two_sided)
+
+# 3. Comparison
+test_comparison <- data.frame(
+  Test_Type = c("One-Sided (less)", "Two-Sided"),
+  T_Statistic = c(one_sided$statistic, two_sided$statistic),
+  P_Value = c(one_sided$p.value, two_sided$p.value),
+  Significant_at_0.05 = c(one_sided$p.value < 0.05, two_sided$p.value < 0.05)
+)
+print(test_comparison)
+
+cat("\nKEY RELATIONSHIP:\n")
+cat("For one-tailed tests: p_one-sided = p_two-sided / 2\n")
+cat("Two-sided p-value:", round(two_sided$p.value, 4), "\n")
+cat("One-sided p-value:", round(one_sided$p.value, 4), "\n")
+
+# Conclusion: The one-sided test is more powerful for detecting 
+# a specific directional alternative (μ < 5).
+```
+
+**Conclusion - When to Use Which?**
+
+| Scenario | Use |
+|----------|-----|
+| You only care if the effect is in one direction | One-sided |
+| You want to detect any difference (up or down) | Two-sided |
+| You have a specific directional hypothesis before seeing data | One-sided |
+| You're exploring without a directional hypothesis | Two-sided |
+
+In this case, since we specifically suspected the student studies **less** than 5 hours, the **one-sided test** is appropriate and more powerful for detecting this specific alternative.
+
+---
+
+## Summary of Key Concepts
+
+```{r, echo=FALSE}
+summary_table <- data.frame(
+  Concept = c("Sample Size Effect", "Normality Assumption", "One vs Two-Sided", 
+              "P-Value Interpretation", "Confidence Interval"),
+  Description = c(
+    "Larger n → smaller SE → more statistical power",
+    "Check with Q-Q plot and Shapiro-Wilk test before t-test",
+    "One-sided: more power for directional hypotheses",
+    "P < α → reject H0; P ≥ α → fail to reject H0",
+    "If μ0 is outside 95% CI, we reject H0 at α = 0.05"
+  )
+)
+knitr::kable(summary_table, caption = "Key Statistical Testing Concepts")
+```
