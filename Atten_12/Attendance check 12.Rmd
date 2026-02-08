@@ -1,0 +1,1120 @@
+---
+title: "Analysis of<br>Spatial & Temporal Data"
+subtitle: <span style="color:dodgerblue">Clustering, PCA, & SOM </span>
+author: "22BA13058 - Nguyen The Cuong"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    highlight: espresso
+    code_download: FALSE
+    code_folding: show
+    number_sections: TRUE
+    dev: "svg"
+editor_options:
+  markdown:
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE,
+                      fig.dim = c(8, 6), fig.align = "center", out.width = "100%")
+```
+
+```{r klippy, echo=FALSE, include=TRUE}
+klippy::klippy(c('r', 'python', 'json', 'linux'), position = c('top', 'right'),
+               tooltip_message = 'Click to copy', tooltip_success = 'Copied')
+```
+
+------------------------------------------------------------------------
+
+> **Environment Settings**
+
+```{r}
+# Loading required R packages:
+library(tidyverse)
+library(grid)
+library(gridExtra)
+library(plotly)
+```
+
+------------------------------------------------------------------------
+
+# Introduction
+
+## Understanding the Landscape: Classification vs. Clustering
+
+Before diving into **Clustering**, it is essential to distinguish between the two ways we categorize data in Machine Learning.
+
+| Feature | **Classification** | **Clustering** |
+|----|----|----|
+| **Goal** | To predict a **pre-defined label** for new data. | To find **hidden patterns** or natural groupings. |
+| **Ground Truth** | We have an "answer key" (labels) to train the model. | No "answer key". We don't know the groups in advance. |
+| **Analogy** | Sorting mail into "Spam" or "Not Spam" based on examples you've seen before. | Sorting a bowl of mixed jellybeans by color without knowing what flavors exist. |
+| **Algorithms** | Logistic Regression, Random Forest, SVM. | K-Means, Hierarchical, DBSCAN. |
+
+$$Classification \Leftrightarrow Supervised$$
+
+$$Clustering \Leftrightarrow Unsupervised$$
+
+------------------------------------------------------------------------
+
+# Clustering: K-Means
+
+------------------------------------------------------------------------
+
+## Theory
+
+-   **Clustering** is a form of **Unsupervised Learning**.
+
+-   Unlike classification (where we already know the labels), clustering looks at **"unlabeled"** data and tries to find natural groupings based on similarities.
+
+-   K-Means is a **centroid-based** algorithm.
+    Its mathematical objective is to minimize the **Within-Cluster Sum of Squares (WCSS)**.
+
+    $\Rightarrow$ Essentially, it wants the distance between the data points and their respective cluster center (centroid) to be as small as possible.
+
+-   The objective function is:
+
+$$ J = \sum_{j=1}^k \sum_{i=1}^n {\vert \vert x_i^{(j)} - \mu_j \vert \vert}^2 $$
+
+Where:
+
+-   $k$ is the number of clusters.
+
+-   $n$ is the number of points.
+
+-   \$x_i\^{(j)} is a data point.
+
+-   $\mu_j$ is the centroid of cluster $j$.
+
+------------------------------------------------------------------------
+
+## How It Works
+
+-   K-Means doesn't find the perfect clusters instantly.
+    It "learns" them through iteration.
+
+-   The $K$ refers to the number of groups (**clusters**) you want to find.
+
+    The algorithm follows these simple steps (i.e. **The 4-Step Iteratie Process**):
+
+    1.  **Initialization**: You choose $K$ (number of clusters) and the algorithm randomly places $K$ centroids in the data space.
+
+    2.  **Assignment**: Every data point "looks" at the centroids and joins the one it is closest to.
+
+    3.  **Update**: Each centroid moves to the exact center (the mean) of all the points that just joined it.
+
+    4.  **Convergence**: Steps 2 and 3 repeat until the centroids stop moving or a maximum number of iterations is reached.
+
+-   **K-Means "Logic"**
+
+```{r, fig.dim = c(8, 8)}
+# 1. Generate Synthetic Data (3 "Blobs")
+set.seed(42)
+points <- tibble(
+  x = c(rnorm(50, 2), rnorm(50, 5), rnorm(50, 8)),
+  y = c(rnorm(50, 2), rnorm(50, 8), rnorm(50, 3))
+)
+
+# 2. Visualizing Raw Data (Unsupervised starting point)
+p1 <- ggplot(points, aes(x, y)) + 
+  geom_point(alpha = 0.6) + 
+  labs(title = "1. Raw Data", subtitle = "No labels, just points in space") +
+  theme_bw() + theme(aspect.ratio = 1)
+
+# 3. Visualizing Random Initialization
+centroids_init <- tibble(x = c(2, 5, 8), y = c(5, 5, 5), cluster = factor(1:3))
+p2 <- ggplot(points, aes(x, y)) + 
+  geom_point(alpha = 0.3) + 
+  geom_point(data = centroids_init, aes(fill = cluster), shape = 23, size = 5, stroke = 2) +
+  labs(title = "2. Initialization", subtitle = "K=3 random centroids placed") +
+  theme_bw() + theme(aspect.ratio = 1, legend.position = "none")
+
+# 4. Final Result after Convergence
+km <- kmeans(points, centers = 3)
+points$cluster <- factor(km$cluster)
+p3 <- ggplot(points, aes(x, y, color = cluster)) + 
+  geom_point(alpha = 0.6) + 
+  stat_ellipse() +
+  labs(title = "3. Convergence", subtitle = "Points assigned and centroids optimized") +
+  theme_bw() + theme(aspect.ratio = 1, legend.position = "none")
+
+# Combine plots
+grid.arrange(p1, p2, p3, layout_matrix=rbind(c(1, 2), c(3, 3)))
+```
+
+> OPS!!!
+> The results seems not as expected, let's try to improve it
+
+```{r}
+# IMPROVED CODE FOR K-MEANS
+# The issue is that the initial centroids were placed in a line (y = 5 for all)
+# This can lead to suboptimal clustering. Let's fix this by:
+# 1. Using nstart parameter to try multiple random initializations
+# 2. Setting seed for reproducibility
+
+set.seed(42)
+points <- tibble(
+  x = c(rnorm(50, 2), rnorm(50, 5), rnorm(50, 8)),
+  y = c(rnorm(50, 2), rnorm(50, 8), rnorm(50, 3))
+)
+
+# Run K-means with multiple starts to find optimal centroids
+km_improved <- kmeans(points, centers = 3, nstart = 25)
+points$cluster <- factor(km_improved$cluster)
+
+# Improved visualization with better centroids
+centroids_final <- as_tibble(km_improved$centers) %>%
+  mutate(cluster = factor(1:3))
+
+p_improved <- ggplot(points, aes(x, y, color = cluster)) + 
+  geom_point(alpha = 0.6) + 
+  geom_point(data = centroids_final, aes(x, y, fill = cluster), 
+             shape = 23, size = 5, stroke = 2, color = "black") +
+  stat_ellipse() +
+  labs(title = "Improved K-Means Clustering", 
+       subtitle = "Using nstart=25 for better centroid initialization") +
+  theme_bw() + theme(aspect.ratio = 1)
+
+print(p_improved)
+```
+
+------------------------------------------------------------------------
+
+## Discussion
+
+**Strengths and Weakness**
+
+-   **Pros**:
+    -   **Speed**: It is very computationally efficient for large datasets.
+    -   **Simplicity**: Easy to explain and interpret.
+    -   **Versatility**: Works well as a pre-processing step for other algorithms.
+-   **Cons**:
+    -   **The "K" Problem**: You must specify the number of clusters in advance (requires using the Elbow Method or Silhouette Score).
+    -   **Outlier Sensitivity**: A single outlier can significantly pull the "mean" (centroid) away from the center of the actual cluster.
+    -   **Shape Bias**: K-Means assumes clusters are spherical. It struggles with elongated or "U-shaped" data.
+
+**Why the Initial Centroids Matter**
+
+$\Rightarrow$ Because K-Means starts with random **centroids**, it is possible to get a "**bad start**" where the algorithm gets stuck in a sub-optimal solution (a local optimum).
+
+**How `R` handles this**:
+
+In the command `kmeans(data, centers = 3, nstart = 25)`, the `nstart = 25` parameter tells `R` to try 25 different random starting locations and keep the one with the lowest total variance.
+
+**Key Considerations for Clustering**
+
+| Feature | Description |
+|----|----|
+| **Sensitivity to Outliers** | A single point very far away can pull the centroid away from the actual group. |
+| **Spherical Shape** | K-Means assumes clusters are "round". If your data is shaped like a crescent moon or a ring, K-Means will fail (and you should use **DBSCAN** instead). |
+| **Scaling** | Always use `scale()` before clustering if your variables have different units. |
+
+------------------------------------------------------------------------
+
+## Practice
+
+------------------------------------------------------------------------
+
+### Practice 1
+
+To practice, we will use the built-in `iris` dataset, but we will "hide" the species labels to see if K-Means can rediscover them on its own.
+
+Let's install the `factoextra` package:
+
+```{r}
+# install.packages("factoextra") # Excellent for clustering visualization
+```
+
+1.  **Data Scaling**
+
+K-Means relies on **Euclidean distance**.
+Therefore, variables with large scales (like 0–1000) will overpower small scales (0–1).
+**Scaling the data is a mandatory first step.**
+
+```{r}
+library(factoextra)
+# Load data and remove the categorical 'Species' column
+data_raw <- iris[, -5] 
+head(data_raw)
+
+# Scale the data (Mean = 0, SD = 1)
+data_scaled <- scale(data_raw)
+
+head(data_scaled)
+```
+
+2.  **Finding the Optimal** $K$ (The Elbow Method)
+
+How do we know if we need 2, 3, or 10 clusters?
+We look for the "Elbow" in the Total Within-Cluster Sum of Squares (WSS).
+We want a low WSS, but after a certain point, adding more clusters doesn't help much.
+
+```{r}
+# Using factoextra to find the optimal K
+fviz_nbclust(data_scaled, kmeans, method = "wss") +
+  geom_vline(xintercept = 3, linetype = 2, color = "red") +
+  labs(subtitle = "Elbow Method: Look for the 'bend' in the arm")
+```
+
+> The plot shows a clear "bend" at $K=3$, suggesting 3 is the ideal number of clusters.
+
+3.  **Running the K-Means Algorithm**
+
+Based on above finding, now we run the algorithm with $K=3$.
+
+We use `nstart = 25` to run the algorithm 25 times with different random starting points to ensure we find the best result.
+
+```{r}
+set.seed(123) # For reproducibility
+km_result <- kmeans(data_scaled, centers = 3, nstart = 25)
+
+km_result
+
+glimpse(km_result)
+```
+
+4.  **Visualizing the Clusters**
+
+Since our data has 4 dimensions (Sepal/Petal length/width), we cannot plot it easily in 2D.
+
+`factoextra` uses **Principal Component Analysis (PCA)** to squash those 4 variables into 2 dimensions for us to look at.
+
+```{r}
+fviz_cluster(km_result, data = data_scaled,
+             palette = "jco",
+             geom = "point",
+             ellipse.type = "convex", 
+             ggtheme = theme_minimal(),
+             main = "K-Means Clustering (K=3)")
+```
+
+5.  **Evaluating the Result**
+
+Since we actually know the real species for the `iris` dataset, we can check how well the algorithm did:
+
+```{r}
+table(iris$Species, km_result$cluster)
+```
+
+```{r}
+# Method 1: Using Silhouette Score to validate clustering quality
+library(cluster)
+
+# Calculate silhouette score for current clustering
+sil <- silhouette(km_result$cluster, dist(data_scaled))
+fviz_silhouette(sil) + 
+  labs(title = "Silhouette Plot for K-Means (K=3)",
+       subtitle = "Higher values indicate better-defined clusters")
+
+# Print average silhouette width
+cat("Average Silhouette Width:", mean(sil[, 3]), "\n")
+
+# Method 2: Try different values of K to see if there's a better option
+k_values <- 2:6
+silhouette_scores <- sapply(k_values, function(k) {
+  set.seed(123)
+  km <- kmeans(data_scaled, centers = k, nstart = 25)
+  sil <- silhouette(km$cluster, dist(data_scaled))
+  mean(sil[, 3])
+})
+
+cat("\nOptimal K based on Silhouette Score:", k_values[which.max(silhouette_scores)], "\n")
+
+# Method 3: Compare with actual species labels using Adjusted Rand Index
+library(mclust)
+ari_score <- adjustedRandIndex(iris$Species, km_result$cluster)
+cat("Adjusted Rand Index (comparing to true species):", round(ari_score, 4), "\n")
+```
+
+------------------------------------------------------------------------
+
+### Practice 2
+
+To see the impact of our choice of $K$, let's run the algorithm on the same dataset three times: once with too few clusters, once with the "correct" number, and once with too many.
+
+**Synthetic Data Generation**
+
+We will create three distinct clusters of data points.
+Therefore, we know the "ground truth" is $K = 3$.
+
+```{r}
+set.seed(42)
+# Create 3 clear clusters
+df <- tibble(
+  x = c(rnorm(100, 0), rnorm(100, 5), rnorm(100, 2)),
+  y = c(rnorm(100, 0), rnorm(100, 1), rnorm(100, 5))
+)
+```
+
+**Comparing** $K = 2$, $K = 3$, and $K = 8$
+
+```{r, fig.dim = c(8, 8)}
+# 1. Under-clustering (K = 2)
+km2 <- kmeans(df, centers = 2, nstart = 25)
+p_low <- fviz_cluster(km2, data = df, geom = "point", ellipse.type = "norm") + 
+  labs(title = "K = 2 (Under-clustering)", subtitle = "Two distinct groups are forced together") +
+  theme_minimal() + theme(aspect.ratio = 1, legend.position = "none")
+
+# 2. Optimal clustering (K = 3)
+km3 <- kmeans(df, centers = 3, nstart = 25)
+p_opt <- fviz_cluster(km3, data = df, geom = "point", ellipse.type = "norm") + 
+  labs(title = "K = 3 (Optimal)", subtitle = "The algorithm finds the natural groups") +
+  theme_minimal() + theme(aspect.ratio = 1, legend.position = "none")
+
+# 3. Over-clustering (K = 8)
+km8 <- kmeans(df, centers = 8, nstart = 25)
+p_high <- fviz_cluster(km8, data = df, geom = "point", ellipse.type = "norm") + 
+  labs(title = "K = 8 (Over-clustering)", subtitle = "Natural groups are artificially fractured") +
+  theme_minimal() + theme(aspect.ratio = 1, legend.position = "none")
+
+# Display side-by-side
+grid.arrange(p_low, p_opt, p_high, layout_matrix=rbind(c(1, 2), c(3, 3)))
+```
+
+> You may have some thoughts one the best K from the figures above.
+> Let's prove your arguments are correct
+
+```{r}
+# Validate the optimal K using multiple methods on the synthetic data
+
+# Method 1: Elbow Method (WSS)
+fviz_nbclust(df, kmeans, method = "wss", k.max = 10) +
+  geom_vline(xintercept = 3, linetype = 2, color = "red") +
+  labs(title = "Elbow Method for Optimal K",
+       subtitle = "Clear 'elbow' at K=3 confirms our visual observation")
+
+# Method 2: Silhouette Method
+fviz_nbclust(df, kmeans, method = "silhouette", k.max = 10) +
+  labs(title = "Silhouette Method for Optimal K",
+       subtitle = "Highest silhouette score indicates optimal K")
+
+# Print summary of optimal K
+cat("\n Summary of Optimal K Analysis \n")
+cat("Elbow Method: K = 3 (visual inspection)\n")
+
+# Calculate silhouette scores for comparison
+silhouette_avg <- sapply(2:10, function(k) {
+  km <- kmeans(df, centers = k, nstart = 25)
+  mean(silhouette(km$cluster, dist(df))[, 3])
+})
+cat("Silhouette Method: K =", which.max(silhouette_avg) + 1, "\n")
+```
+
+> Now let's try to see the sensitivity of K on `iris` data
+
+```{r}
+# Sensitivity of K on iris data - comparing different K values
+
+# Reload and scale iris data
+iris_data <- scale(iris[, 1:4])
+
+# Create visualizations for K = 2, 3, 4, 5
+k_values <- c(2, 3, 4, 5)
+results_list <- list()
+
+for (k in k_values) {
+  set.seed(123)
+  km <- kmeans(iris_data, centers = k, nstart = 25)
+  results_list[[as.character(k)]] <- km
+}
+
+# Create comparison plots
+plot_list <- list()
+for(i in seq_along(k_values)) {
+  k <- k_values[i]
+  p <- fviz_cluster(results_list[[as.character(k)]], data = iris_data, geom = "point", 
+                    ellipse.type = "norm") + 
+       labs(title = paste0("K = ", k), subtitle = "Clustering Result") +
+       theme_minimal() + theme(aspect.ratio = 1, legend.position = "none")
+  plot_list[[i]] <- p
+}
+
+# Arrange all plots
+grid.arrange(grobs = plot_list, nrow = 2, ncol = 2)
+
+cat("\nConclusion: K=3 matches the true species labels best.\n")
+```
+
+------------------------------------------------------------------------
+
+# Clustering: Hierarchial Clustering
+
+------------------------------------------------------------------------
+
+## Theory
+
+-   **There are two types of hierarchical clustering**:
+
+    -   **Agglomerative (Bottom-Up)**: Every data point starts as its own cluster.
+        The algorithm then finds the two closest points and merges them.
+        This repeats until everything is in one giant cluster.
+        $\Rightarrow$ (This is the most common method).
+
+    -   **Divisive (Top-Down)**: Start with everyone in one group and recursively split them into smaller groups.
+
+\br
+
+-   **The "Dendrogram"**: The output of this process is a **Dendrogram** — a tree-like diagram.
+
+    -   **Leaves**: The individual data points at the bottom.
+    -   **Branches**: The links between clusters.
+    -   **Height (Y-axis)**: This is the most important part. The vertical distance represents how different two clusters are. If two branches merge at a high value, the groups are very different. If they merge near the bottom, they are very similar.
+
+\br
+
+-   **The Linkage Methods** (How we measure distance): To merge clusters, the algorithm needs a rule to measure the distance between groups of points:
+
+    -   **Single Linkage**: Distance between the two closest members. (Good for long, thin clusters).
+    -   **Complete Linkage**: Distance between the two farthest members. (Good for compact, round clusters).
+    -   **Average Linkage**: Average distance between all members.
+    -   **Ward’s Method**: Minimizes the variance within each cluster. (This is usually the "default" for clean, equal-sized clusters).
+
+------------------------------------------------------------------------
+
+## How It Works
+
+We will use the `USArrests` dataset.
+It contains crime statistics for the 50 US States.It is a great dataset for hierarchical clustering because we can see how different states "huddle" together based on crime rates.
+
+1.  **Prep and Distance Matrix**
+
+Hierarchical clustering requires a Distance Matrix (a table showing the distance between every single pair of points).
+
+```{r}
+# 0. Data summary
+head(USArrests)
+summary(USArrests)
+glimpse(USArrests)
+
+# 1. Load and Scale data (Vital for distance-based methods!)
+df <- scale(USArrests)
+head(df)
+
+# 2. Compute the Dissimilarity/Distance Matrix
+# Method can be "euclidean", "manhattan", etc.
+d <- dist(df, method = "euclidean")
+head(d)
+```
+
+2.  **Running the Algorithm**
+
+We use the `hclust()` function.
+We will use Ward's Method (`ward.D2`) because it creates the most readable clusters.
+
+```{r}
+# 3. Perform Hierarchical Clustering
+hc <- hclust(d, method = "ward.D2")
+
+# 4. Basic Dendrogram Plot
+plot(hc, cex = 0.6, hang = -1, main = "Dendrogram of US States Crime")
+```
+
+3.  **"Cutting the Tree"**
+
+To actually get clusters you can use for analysis, you "cut" the tree.
+You can cut by Height (horizontal line) or by Number of Clusters ($K$).
+
+```{r}
+# Cut the tree into 4 groups
+groups <- cutree(hc, k = 4)
+
+# Visualize with colors and boxes
+fviz_dend(hc, k = 4, 
+          cex = 0.5, 
+          color_labels_by_k = TRUE, 
+          rect = TRUE,
+          main = "US Arrests: 4 Natural Clusters")
+```
+
+------------------------------------------------------------------------
+
+## Discussion
+
+-   **K-Means vs. Hierarchical: Which one to use?**
+
+| Feature | K-Means | Hierarchical |
+|----|----|----|
+| **Number of Clusters (**$K$**)** | Must be chosen **before** you run it. | Can be chosen **after** seeing the tree. |
+| **Speed** | Very fast (Good for millions of rows). | Slow (Computation grows exponentially with data size). |
+| **Reproducibility** | Can vary (Depends on random start). | Very stable (Same data = same tree). |
+| **Output** | Set of assignments. | A rich visual hierarchy (Dendrogram). |
+| **Best For** | Large datasets with known/suspected K. | Small/Medium datasets where you want to see relationships. |
+
+-   **Clustering** is unsupervised (no labels), whereas **Classification** is supervised (pre-defined labels).
+
+-   **K-Means** uses centroids and iterations to find "blobs."
+
+-   **Hierarchical Clustering** uses a distance matrix to build a "family tree."
+
+-   **Scaling** is the most important pre-processing step for both.
+
+------------------------------------------------------------------------
+
+## Practice
+
+-   This practice is used to explore how different "linkage" methods change the shape of your results.
+
+-   We will use the `mtcars` dataset.
+
+-   Our goal is to see if the algorithm can group cars naturally (e.g., sports cars vs. heavy trucks) based on their technical specs.
+
+-   Try to install the following package for showing better **dendrograms**.
+
+```{r}
+library(dendextend) # A specialized library for fancy dendrograms
+```
+
+1.  **Data Preparation**
+
+```{r}
+# We must ensure the row names are preserved (so we can see car names) and that the data is scaled.
+# Load data
+df <- mtcars
+
+head(df)
+summary(df)
+glimpse(df)
+
+# Scaling is crucial because 'hp' (horsepower) is much larger than 'wt' (weight)
+df_scaled <- scale(df)
+
+# Compute the distance matrix once (Euclidean)
+dist_matrix <- dist(df_scaled, method = "euclidean")
+```
+
+2.  **Comparison: The Three Common Linkages**
+
+-   Let's see how **Complete**, **Single**, and **Average** linkage change the "family tree".
+
+    -   **Complete**: Tends to find compact, spherical clusters.
+    -   **Single**: Tends to find "long" clusters (often criticized for "chaining").
+    -   **Average**: A middle ground between the two.
+
+```{r}
+# Run three different versions
+hc_complete <- hclust(dist_matrix, method = "complete")
+hc_single   <- hclust(dist_matrix, method = "single")
+hc_average  <- hclust(dist_matrix, method = "average")
+
+# Plot side-by-side
+par(mfrow = c(1, 3)) # Set layout to 1 row, 3 columns
+
+plot(hc_complete, main = "Complete Linkage", cex = 0.7)
+plot(hc_single,   main = "Single Linkage",   cex = 0.7)
+plot(hc_average,  main = "Average Linkage",  cex = 0.7)
+```
+
+> Look at the "**Single Linkage**" plot.
+> Notice how it looks like a staircase?
+> This is "**Chaining**" — it just keeps adding one car at a time to a single big group.
+> This is usually why Complete or Ward's methods are preferred for data like this.
+
+3.  **Advanced Visualization: The "Tanglegram"**
+
+-   If you want to see exactly how two different methods disagree on clustering, you can use a Tanglegram.
+
+    $\Rightarrow$ It puts two dendrograms face-to-face and connects the same car brands with lines.
+
+```{r, fig.dim = c(9, 9)}
+# Convert to dendrogram objects
+dend1 <- as.dendrogram(hc_complete)
+dend2 <- as.dendrogram(hclust(dist_matrix, method = "ward.D2"))
+
+# Create the tanglegram
+tanglegram(dend1, dend2, 
+           main_left = "Complete Linkage", 
+           main_right = "Ward's Method",
+           highlight_distinct_edges = FALSE, 
+           common_subtrees_color_branches = TRUE)
+```
+
+4.  **Verification: The Cluster Heatmap**
+
+-   The best way to "prove" your clusters are real is to use a **Heatmap**. It shows the `dendrogram` next to the actual data values.
+
+```{r}
+# We use 'heatmap' from base R or 'gplots'
+heatmap(df_scaled, 
+        Colv = NA,           # We don't want to cluster the columns (variables)
+        distfun = dist, 
+        hclustfun = function(x) hclust(x, method="ward.D2"),
+        main = "Heatmap: Why did they cluster?")
+```
+
+-   Look at the cluster at the very top (e.g., Lincoln Continental, Cadillac Fleetwood).
+
+-   Look at the colors in the rows.
+    You'll see they all have very high values for disp (displacement) and wt (weight), and very low values for mpg.
+
+    $\Rightarrow$ The algorithm successfully grouped the "Heavy Gas Guzzlers" together!
+
+5.  **FILL YOUR ANSWERs HERE**
+
+-   Try to run the following code and answer these questions:
+
+    1.  Cut the tree into **2 clusters** instead of 4. Which cars stay together?
+    2.  What happens if you remove the `scale()` function and run the clustering again? (Hint: Horsepower will dominate the results).
+
+```{r}
+# 1. Your code to cut into 2 clusters:
+my_clusters <- cutree(hc_complete, k = 2)
+
+# 2. See which cars are in group 1
+rownames(df)[my_clusters == 1]
+```
+
+```{r}
+# Question 2: Effect of removing scale() function
+cat("\n=== Question 2: Effect of Removing scale() ===\n\n")
+
+# Clustering WITHOUT scaling
+dist_matrix_unscaled <- dist(df, method = "euclidean")  # Using raw data (df is mtcars)
+hc_unscaled <- hclust(dist_matrix_unscaled, method = "complete")
+my_clusters_unscaled <- cutree(hc_unscaled, k = 2)
+
+# Compare dendrograms side by side or just show the unscaled one
+plot(hc_unscaled, main = "Dendrogram WITHOUT Scaling", cex = 0.6)
+rect.hclust(hc_unscaled, k = 2, border = "red")
+
+# Analyze the clusters
+cat("\nCluster Means (Unscaled):\n")
+print(round(colMeans(df[my_clusters_unscaled == 1, ]), 2))
+print(round(colMeans(df[my_clusters_unscaled == 2, ]), 2))
+
+# Check variable ranges to confirm why one dominates
+cat("\nVariable Ranges:\n")
+apply(df, 2, range)
+
+cat("\nConclusion: Without scaling, variables with larger ranges (like 'disp' and 'hp') dominate the distance calculation,\noverpowering smaller-scale variables like 'wt' or 'qsec'.\nThe clustering structure is distorted and relies mostly on these large-value variables.\n")
+```
+
+------------------------------------------------------------------------
+
+# Clustering: DBSCAN
+
+-   While **K-Means** and **Hierarchical** clustering are excellent for finding "**round**" or "**spherical**" groups, they often fail when data is shaped like crescents, rings, or contains a lot of random noise.
+
+-   This is where **DBSCAN** (Density-Based Spatial Clustering of Applications with Noise) shines.
+
+------------------------------------------------------------------------
+
+## Theory
+
+-   Unlike other methods, DBSCAN does not ask "Where is the center?"
+
+    Instead, **it asks: "Is this area crowded?"**
+
+\br
+
+-   **The Two Key Parameters**
+
+    1.  **Eps (**$\epsilon$**)**: The maximum distance (radius) to look for neighbors.
+
+    2.  **MinPts**: The minimum number of points required within that radius to call it a "dense" region.
+
+\br
+
+-   **The Three Types of Points**
+
+    1.  **Core Points**: A point that has at least `MinPts` within its `Eps` radius.
+
+    2.  **Border Points**: A point that is within the radius of a Core point but doesn't have enough neighbors of its own.
+
+    3.  **Noise (Outliers)**: Points that are neither Core nor Border points.
+        **DBSCAN is one of the few algorithms that automatically detects and labels outliers**.
+
+------------------------------------------------------------------------
+
+## How it Works & Discussion
+
+-   Let's create a "Multishape" dataset (like two moons) where K-means will struggle because the groups are not spherical.
+
+-   Note: package `dbscan` is need
+
+```{r}
+library(dbscan)
+```
+
+1.  **Create Non-Spherical Data**
+
+```{r}
+# Create synthetic "multishape" data (crescents and a circle)
+set.seed(123)
+data("multishapes", package = "factoextra")
+df <- multishapes[, 1:2]
+
+ggplot(df, aes(x, y)) + 
+  geom_point(color = "grey") + 
+  labs(title = "Raw Data: Non-Spherical Shapes") +
+  theme_minimal()
+```
+
+2.  **Watch K-Means Fail**
+
+-   K-means tries to cut the data into "pie slices" because it looks for centroids.
+
+```{r}
+km_res <- kmeans(df, centers = 5, nstart = 25)
+fviz_cluster(km_res, df, geom = "point", ellipse = FALSE, 
+             main = "K-Means Failure: It cuts the shapes in half!")
+```
+
+3.  **DBSCAN Success**
+
+-   DBSCAN follows the density and "crawls" along the shapes.
+
+```{r}
+# eps = 0.15 (the radius), minPts = 5 (min points to form a cluster)
+db_res <- dbscan(df, eps = 0.15, minPts = 5)
+
+# Visualize results
+fviz_cluster(db_res, df, geom = "point", ellipse = FALSE, 
+             main = "DBSCAN Success: It identifies the shapes and the noise!")
+```
+
+4.  **Pro-Tip: Finding the "Optimal Eps"**
+
+-   How do you guess the eps (radius)? You can use a K-Distance Plot. You look for the "knee" (the sharpest increase) in the plot.
+
+```{r}
+# Plot the distance to the 5th nearest neighbor
+kNNdistplot(df, k = 5)
+abline(h = 0.15, col = "red", lty = 2)
+```
+
+5.  **FILL YOUR ANSWERs & CODEs HERE**
+
+-   What will be happend when you change the Epsilon to higher AND lower numbers?
+
+```{r}
+# Experiment with different Epsilon values in DBSCAN
+
+# Define different eps values to test
+eps_values <- c(0.10, 0.15, 0.25)
+
+# Create a list to store results
+plot_list <- list()
+
+for (i in seq_along(eps_values)) {
+  eps <- eps_values[i]
+  # Run DBSCAN
+  db <- dbscan(df, eps = eps, minPts = 5)
+  
+  # Create plot
+  p <- fviz_cluster(db, df, geom = "point", ellipse = FALSE,
+                    main = paste0("DBSCAN with eps = ", eps)) +
+    theme_minimal() + theme(legend.position = "none", aspect.ratio = 1)
+  
+  plot_list[[i]] <- p
+}
+
+# Display plots
+grid.arrange(grobs = plot_list, nrow = 1)
+
+# Summary
+cat("Lower eps (0.10) => Many points are considered noise (black points), clusters are fragmented.\n")
+cat("Optimal eps (0.15) => Captures the natural shapes well.\n")
+cat("Higher eps (0.25) => Clusters start to merge together (e.g., the two moons might bridge).\n")
+```
+
+**Discussion:**
+
+1.  **Lower Epsilon**: When the epsilon is too small, the radius for finding neighbors is too strict.
+    Many points fail to find enough neighbors to reach `MinPts`, so they are labeled as noise.
+    Natural clusters get broken up into many smaller, insignificant clusters.
+
+2.  **Higher Epsilon**: When epsilon is too large, the algorithm is too "generous".
+    It jumps across the gaps that should separate clusters, causing distinct groups to merge into one giant cluster.
+    It also drastically reduces the number of outliers/noise detected.
+
+3.  **Optimal Balance**: The goal is to find an epsilon that is just large enough to keep the dense regions connected, but small enough not to bridge separate density regions.
+    The `kNNdistplot` is the standard tool to find this "elbow" point.
+
+------------------------------------------------------------------------
+
+# Summary I
+
+| Feature | K-Means | Hierarchical | DBSCAN |
+|----|----|----|----|
+| Shape | Spherical only | Spherical/Varies | **Any shape** (moons, rings) |
+| Outliers | Very sensitive | Included in trees | **Identifies them as noise** |
+| Parameters | Needs $K$ | Needs nothing (to start) | Needs `eps` and `minPts` |
+| Speed | Very Fast | Slow | Fast |
+| Best For | Clean, round blobs | Small datasets/History | Messy data with outliers |
+
+> **K-Means:** Finding **Spherical** groups
+
+> **Hierarchical:** Finding **Tree-like** relationships (dendrograms).
+
+> **DBSCAN**: Finding **Density-based** groups and handling noise.
+
+------------------------------------------------------------------------
+
+# Principal Component Analysis (PCA)
+
+-   **Principal Component Analysis (PCA)** is the perfect bridge between previous topics.
+
+-   Like **Spectral Analysis**, it looks for "**patterns**" in variance, and like **Clustering**, it helps us **simplify complex datasets**.
+
+## Theory: The Core Concept: Dimensionality Reduction
+
+-   Imagine you are a photographer trying to take a picture of a 3D statue. You want to choose the one angle that **shows the most detail and "spread"** of the statue in a 2D photo.
+
+\br
+
+-   **PCA does exactly this for data**: It takes a dataset with many variables (dimensions) and "**rotates**" it to find new axes—called **Principal Components (PCs)**—that capture the maximum amount of information (variance).
+
+\br
+
+-   **Why use PCA?**
+    -   **Simplification**: Reducing 50 variables down to 2 or 3 so we can plot them.
+    -   **Multicollinearity**: Dealing with variables that are highly correlated with each other.
+    -   **Feature Extraction**: Finding the "hidden" factors that drive your data.
+
+------------------------------------------------------------------------
+
+## How It Works
+
+-   PCA follows a specific mathematical workflow:
+
+    1.  **Standardization**: Variables **must** be scaled (**Mean=0, SD=1**). Otherwise, a variable with a large range (like "Salary") will dominate a variable with a small range (like "Years of Education").
+    2.  **Covariance Matrix**: It looks at how every variable moves in relation to every other variable.
+    3.  **Eigen-Decomposition**: It calculates:
+        1.  **Eigenvectors**: The **direction** of the new axes (**Principal Components**).
+        2.  **Eigenvalues**: The **magnitude** (amount of variance) each axis explains.
+    4.  **PC1, PC2, etc.**: PC1 is always the direction of the **absolute maximum variance**. PC2 is the second best, and it is **always** at a 90-degree angle (orthogonal) to PC1.
+
+------------------------------------------------------------------------
+
+## R-coding & Discussion
+
+-   Let's use the 4 measurements of the `iris` flowers to see if we can "squash" them into 2 dimensions while still seeing the difference between species.
+
+```{r}
+head(iris[, 1:4])
+summary(iris[, 1:4])
+glimpse(iris[, 1:4])
+```
+
+1.  **Run the PCA**
+
+-   We use the`prcomp()` function. Setting `scale = TRUE` is essential.
+
+```{r}
+# Run PCA on numeric columns (1 to 4)
+pca_res <- prcomp(iris[, 1:4], scale = TRUE)
+
+# Look at the "Rotation" (Loadings)
+# This shows how much each original variable contributes to the new PCs
+pca_res$rotation
+```
+
+2.  **Scree Plot**
+
+-   How many PCs do we need? We look for the "Elbow" in the **Scree Plot**, which shows how much percentage of the total variance each PC explains.
+
+```{r}
+fviz_eig(pca_res, addlabels = TRUE, ylim = c(0, 80)) +
+  labs(title = "Scree Plot", subtitle = "PC1 and PC2 explain ~95% of the data!")
+```
+
+3.  **The Biplot (The "Master" Visualization)**
+
+-   The Biplot shows two things at once:
+
+    1.  **The Points**: Where each flower sits in the new 2D space.
+    2.  **The Arrows (Vectors)**: How the original variables (Length, Width) relate to the PCs.
+
+```{r}
+fviz_pca_biplot(pca_res, 
+                label = "var", # Only label the variables (arrows)
+                habillage = iris$Species, # Color points by Species
+                addEllipses = TRUE, 
+                col.var = "black") +
+  theme_minimal() +
+  labs(title = "PCA Biplot: Iris Dataset")
+```
+
+4.  **Interpret the Biplot**
+    1.  **The Points**: Notice how "Setosa" is completely separated from the others? PCA found this separation without even knowing the species names!
+    2.  **The Arrows**:
+        -   **Length of Arrow**: Represents the strength of the variable. Longer arrows have more influence on the PCs.
+        -   **Direction**: Arrows pointing in the same direction are positively correlated (e.g., Petal Length and Petal Width).
+        -   **Angle**: Arrows at 90 degrees to each other are uncorrelated.
+    3.  **The Axes**: PC1 (X-axis) captures 73% of the differences. If a flower is far to the right, it has high Petal Length and Width.
+
+## Practice
+
+-   Try running PCA on the `USArrests` dataset.
+
+    1.  Which variable (Murder, Assault, UrbanPop, or Rape) is the "odd one out" (pointing in a different direction)?
+
+    2.  Which states are the outliers in the Biplot?
+
+```{r}
+# PCA on USArrests dataset
+
+# 1. Run PCA on USArrests
+head(USArrests)
+pca_arrests <- prcomp(USArrests, scale = TRUE)
+
+# 2. View the loadings (rotation matrix)
+cat("\n=== PCA Loadings (Rotation Matrix) ===\n")
+print(round(pca_arrests$rotation, 3))
+
+# 3. Scree Plot
+fviz_eig(pca_arrests, addlabels = TRUE) +
+  labs(title = "Scree Plot: USArrests")
+
+# 4. Biplot
+fviz_pca_biplot(pca_arrests, 
+                repel = TRUE,  # Prevent label overlap
+                col.var = "red", # Variables in red
+                col.ind = "blue",  # Individuals in blue
+                geom.ind = "text", # Use text for states
+                alpha.ind = 0.5) +
+  theme_minimal() +
+  labs(title = "PCA Biplot: USArrests Dataset")
+
+# Find extreme outliers based on PC scores
+scores <- as.data.frame(pca_arrests$x)
+
+cat("\nState with highest PC1 (Correlation with violent crime):", rownames(scores)[which.max(scores$PC1)], "\n")
+cat("State with highest PC2 (Correlation with UrbanPop):", rownames(scores)[which.max(scores$PC2)], "\n")
+```
+
+**Discussion:**
+
+1.  **Which variable is the "odd one out"?**
+    -   **UrbanPop** is the odd one out.
+    -   In the biplot, the vectors for `Murder`, `Assault`, and `Rape` all point in roughly the same direction (towards the right, along PC1). This means they are highly correlated with each other.
+    -   The vector for `UrbanPop` points downwards (along PC2), almost perpendicular to the crime variables. This indicates that urbanization is largely independent of the violent crime rate in this dataset.
+2.  **Which states are the outliers?**
+    -   **Florida, Nevada, and California** appear far to the right, indicating high crime rates.
+    -   **Mississippi, North Carolina** also appear far right but slightly higher/lower on PC2.
+    -   **North Dakota** is far to the left, indicating it is one of the safest states (lowest crime).
+    -   **California** is also an outlier along the vertical axis (PC2), indicating very high urbanization compared to others.
+
+# Summary II
+
+| Feature | Clustering (K-Means / HC) | PCA |
+|----|----|----|
+| **Output** | Assigns points to **Groups**. | Assigns points to **Coordinates**. |
+| **Goal** | Find "**Huddles**" of data. | Find "**Directions**" of variation. |
+| **Relationship** | Often used **after PCA** to cluster on the simplified components. | Often used **before Clustering** to remove noise. |
+
+------------------------------------------------------------------------
+
+# Self-Organizing Maps (SOM)
+
+-   **SOM** (also known as **Kohonen Maps**) represents a unique intersection between **Clustering** and **Dimensionality Reduction**.
+-   While **PCA** is a **linear "squashing"** of data, SOM is a **non-linear "warping" of a grid** to fit the data.
+
+------------------------------------------------------------------------
+
+## Theory: The "Mathematical Rubber Sheet"
+
+-   Imagine a 2D grid of nodes (like a fishing net) hovering over your high-dimensional data points. SOM works by "pulling" the nodes of the net toward the data points until the net takes the shape of the data.
+
+\br
+
+-   **Key Characteristics**:
+
+    -   **Topology Preservation:** This is the "magic" of SOM.
+        If two points are close together in your complex 10-dimensional data, they will end up in the same or neighboring nodes on your 2D grid.
+
+    -   **Competitive Learning:** It is a simple Neural Network.
+        When a data point is presented, the nodes "compete" to see which one is closest.
+        This winner is called the **Best Matching Unit (BMU)**.
+
+    -   **The Neighbor Effect:** When a BMU is pulled toward a data point, its neighbors on the grid are also pulled slightly in that same direction.
+        This ensures the "net" doesn't tear.
+
+------------------------------------------------------------------------
+
+## How It Works & Discussion
+
+-   We will use the `kohonen` package, which is the gold standard for SOM in R. We will return to our iris or mtcars data to see how SOM organizes them.
+
+```{r}
+# install.packages("kohonen")
+library(kohonen)
+```
+
+1.  **Prepare & Define the Grid**
+
+-   We define a grid (e.g., 5x5 or 10x10). The choice of grid size depends on how much "detail" you want to see.
+
+```{r}
+# 1. Scale data
+data_train <- scale(iris[, 1:4])
+
+# 2. Define the grid (Hexagonal grids are usually better than squares)
+som_grid <- somgrid(xdim = 6, ydim = 6, topo = "hexagonal")
+
+# 3. Train the model
+set.seed(123)
+som_model <- som(data_train, grid = som_grid, rlen = 100, alpha = c(0.05, 0.01))
+```
+
+2.  **Visualizing the Map**
+
+-   SOM offers several unique ways to look at your data.
+
+**A. The "Codes" Plot (Fan Charts)**:
+
+This shows the profile of each node.
+It tells you which variables are "high" or "low" in different parts of the map.
+
+```{r}
+plot(som_model, type = "codes", main = "Node Weight Vectors")
+```
+
+**B. The "Counts" Plot**
+
+This shows how many data points "fell into" each node.
+If a node is empty, it might indicate a gap in your data.
+
+```{r}
+plot(som_model, type = "counts", main = "Data Points per Node")
+```
+
+**C. The Heatmap (Property Plot)**
+
+We can see how a specific variable (like Petal Length) is distributed across the entire map.
+
+```{r}
+# Plot for 'Petal.Length' (Column 3)
+plot(som_model, type = "property", property = getCodes(som_model)[,3], 
+     main = "Heatmap: Petal Length Distribution")
+```
+
+3.  **Clustering the SOM**
+
+-   A very common technique is to cluster the **SOM nodes themselves**.
+
+-   Since the SOM has already simplified the data into 36 nodes (6x6), we can run **Hierarchical Clustering** on those nodes to find "**Super-clusters**".
+
+```{r}
+# Hierarchical clustering on SOM codebook vectors
+som_cluster <- cutree(hclust(dist(getCodes(som_model))), 3)
+
+# Plot the SOM with the cluster boundaries
+plot(som_model, type = "mapping", bgcol = c("red", "green", "blue")[som_cluster], 
+     main = "SOM Clusters")
+add.cluster.boundaries(som_model, som_cluster)
+```
+
+# Summary III
+
+-   Summary Comparison: **K-Means** vs. **PCA** vs. **SOM**
+
+| Feature | PCA | K-Means | SOM |
+|----|----|----|----|
+| **Method** | Linear Projection | Centroid Partitioning | Non-linear Neural Map |
+| **Output** | Coordinates (PC1, PC2) | Discrete Cluster Labels | 2D Grid Position |
+| **Best For** | Finding global variance | Finding hard boundaries | Finding non-linear shapes |
+| **Topology** | Not preserved | No grid relationship | **Preserved** (neighbors stay neighbors) |
+
+# EOF
