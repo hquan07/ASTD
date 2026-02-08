@@ -1,0 +1,960 @@
+---
+title: "Parametric Probability Distributions"
+subtitle: "PART III: Joint Distribution (Bi- & Multi-variate)"
+author: "22BA13260 - Tran Huy Quan"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    code_download: FALSE
+    code_folding: show
+    number_sections: TRUE
+    theme: flatly
+    toc: TRUE
+    toc_float: TRUE
+    dev: "svg"
+    css: styles.css
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This lecture covers the transition from single-variable statistics to
+
+**Multivariate Joint Distributions**.
+
+We will move from 2-D (Bivariate) to $n-$dimensions and introduce $Copulas$ — the modern way to model "dependence" separately from individual behaviors.
+
+**Required R packages**:
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(grid)
+library(gridExtra)
+library(ggExtra)
+library(MASS)
+library(ggridges)
+library(viridis)
+library(mnormt) # For bivariate normal density and probability
+library(plotly)
+```
+
+------------------------------------------------------------------------
+
+# Foundations of Joint Distributions
+
+## The Joint PDF & CDF
+
+I a uni-variate world, we have $P(X \le x)$, but in a bi-variate world, we look at the probability that two events happen **simultaneously**:
+
+-   **Joint CDF**:
+
+$$ F_{(X, Y)}(x, y)=P(X \le x, Y \le y)$$
+
+-   **Joint PDF** (Continuous): A surface $f(x, y)$ where the volume under the surface equals $1$.
+
+$$ \int_{-\infty}^{\infty} \int_{-\infty}^{\infty} f(x, y) dx dy = 1 $$
+
+-   **Visualization**:
+
+```{r, out.width="80%", echo=FALSE}
+# Define parameters
+mu <- c(0, 0)
+sigma <- matrix(c(1, 0.6, 0.6, 1), nrow=2) # High correlation (0.6)
+
+# Generate 1000 samples
+set.seed(37)
+bvn_data <- as.data.frame(mvrnorm(1000, mu = mu, Sigma = sigma))
+colnames(bvn_data) <- c("X", "Y")
+
+# Visualize
+ggplot(bvn_data, aes(x=X, y=Y)) +
+  geom_point(alpha=0.3, color="blue") +
+  geom_density_2d(color="red") +
+  labs(title="Bivariate Normal (0.6 Correlation)", subtitle="Standard way using MASS package") +
+  theme_minimal() +
+  theme(aspect.ratio = 1)
+```
+
+
+```{r, echo=FALSE, out.width="100%"}
+# 1. Setup grid
+x <- seq(-3, 3, length.out = 100)
+y <- seq(-3, 3, length.out = 100)
+grid <- expand.grid(x = x, y = y)
+
+# 2. Parameters
+mu <- c(0, 0)
+sigma <- matrix(c(1, 0.5, 0.5, 1), nrow = 2) # rho = 0.5
+
+# 3. Calculate PDF and CDF
+set.seed(37)
+grid$pdf <- dmnorm(grid[,1:2], mean = mu, varcov = sigma)
+grid$cdf <- pmnorm(grid[,1:2], mean = mu, varcov = sigma)
+
+# Plot 2D PDF (The "Hill" Contours)
+p1 <- ggplot(grid, aes(x, y, z = pdf)) +
+  geom_contour_filled() +
+  labs(title = "Joint PDF (2D Contours)", subtitle = "Darker = More Likely") +
+  theme_minimal() +
+  theme(aspect.ratio = 1, legend.position="none")
+
+# Plot 2D CDF (The "Accumulation" Heatmap)
+p2 <- ggplot(grid, aes(x, y, fill = cdf)) +
+  geom_raster() +
+  #scale_fill_viridis_c() +
+  scale_fill_viridis(option="inferno") +
+  labs(title = "Joint CDF (2D Heatmap)", subtitle = "Probability X < x AND Y < y") +
+  theme_minimal() +
+  theme(aspect.ratio = 1, legend.position="none")
+
+grid.arrange(p1, p2, ncol=2)
+```
+
+```{r, echo=FALSE}
+library(plotly)
+
+# Reshape data into matrices for plotly
+pdf_matrix <- matrix(grid$pdf, nrow = 100)
+cdf_matrix <- matrix(grid$cdf, nrow = 100)
+
+# 3D PDF Plot (The Hill)
+fig_pdf <- plot_ly(x = ~x, y = ~y, z = ~pdf_matrix) %>% 
+  add_surface(colorscale = "Viridis") %>%
+  layout(title = "Joint PDF: The Probability Hill")
+
+# 3D CDF Plot (The Escalator)
+fig_cdf <- plot_ly(x = ~x, y = ~y, z = ~cdf_matrix) %>% 
+  add_surface(colorscale = "Hot") %>%
+  layout(title = "Joint CDF: The Cumulative Slope")
+
+fig_pdf
+fig_cdf
+```
+
+## Marginal Distributions (The "Margins")
+
+If you have the joint behavior but only care about one variable, you "sum out" (or integrate out) the other.
+
+-   **Marginal of** $X$: $$ f_X(x) = \int_{-\infty}^{\infty} f(x,y) dy$$
+
+-   *Intuition*: Imagine looking at a 3-D mountain from the side; the silhouette you see is the marginal distribution.
+
+Examples:
+
+```{r, out.width="100%", echo=FALSE}
+# 1. Simulate Bivariate Normal Data
+set.seed(123)
+mu = c(0, 0)
+sigma = matrix(c(1, 0.7, 0.7, 1), nrow=2) # 0.7 correlation
+data = as.data.frame(mvrnorm(1000, mu, sigma))
+colnames(data) = c("X", "Y")
+
+# 2. Plot with Marginals
+p = ggplot(data, aes(x=X, y=Y)) +
+  geom_point(alpha=0.3, color="steelblue") +
+  geom_density_2d(color="darkblue") +
+  theme_minimal() +
+  theme(aspect.ratio = 1) +
+  labs(title="Bivariate Normal Distribution", subtitle="Joint Density with Marginal Distributions")
+
+ggMarginal(p, type = "histogram", fill="steelblue")
+```
+
+## Conditional Distributions
+
+What is the distribution of $Y$ given we know $X = x$?
+
+-   **Formula**: $$ f_{Y|X}(y|x) = \frac{f(x,y)}{f_X(x)}$$
+
+-   *NOTE*: if $X$ and $Y$ are **independent**, then $$ f(x,y) = f_X(x) \cdot f_Y(y) $$
+
+-   Mathematically, $f(Y∣X=x)$ is the shape of the joint distribution when we lock $X$ at a specific value. Visually, this is equivalent to taking a knife and cutting through the 3D "probability hill".
+
+-   **Faceted Conditional Densities (Standardized View)**
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# 1. Generate Correlated Data
+set.seed(123)
+rho <- 0.7
+sigma <- matrix(c(1, rho, rho, 1), 2)
+df <- as.data.frame(mvrnorm(2000, mu = c(0, 0), Sigma = sigma))
+colnames(df) <- c("X", "Y")
+
+# Filter data for specific "slices" of X
+slices <- df %>%
+  filter(abs(X - (-1.5)) < 0.1 | abs(X - 0) < 0.1 | abs(X - 1.5) < 0.1) %>%
+  mutate(condition = paste("X ≈", round(X, 1)))
+
+ggplot(slices, aes(x = Y, fill = condition)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~condition) +
+  labs(title = "Conditional PDF Slices",
+       subtitle = "Notice how the 'mean' of Y depends on the value of X") +
+  theme_minimal()
+```
+
+-   **The "Slice" Visulization (Ridgeline Plot)**
+
+The Ridgeline plot (or Joyplot) is the best way to show how the distribution of $Y$ changes as $X$ increases.
+Each "mountain" in the stack is a conditional distribution $f(Y∣X=x)$.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+# 2. To visualize "conditional" slices, we bin X into categories
+df_slices <- df %>%
+  mutate(X_bin = cut(X, breaks = seq(-2, 2, by = 0.5))) %>%
+  filter(!is.na(X_bin))
+
+# 3. Create Ridgeline Plot
+ggplot(df_slices, aes(x = Y, y = X_bin, fill = ..x..)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_fill_viridis_c() +
+  labs(title = "Conditional Distributions: f(Y | X = x)",
+       subtitle = "As X increases (bottom to top), the distribution of Y shifts right",
+       x = "Value of Y", y = "Given X is in range...") +
+  theme_minimal()
+```
+
+## The Bivariate Normal Probability Density Function (PDF)
+
+is typically expressed in two forms: the Standard form (where means are 0 and variances are 1) and the General form.
+
+-   **The General Form**: This version includes the means ($\mu$), standard deviations ($\sigma$), and correlation ($\rho$).
+
+$$f(x, y) = \frac{1}{2\pi\sigma_x\sigma_y\sqrt{1-\rho^2}} \exp\left( -\frac{1}{2(1-\rho^2)} \left[ \frac{(x-\mu_x)^2}{\sigma_x^2} + \frac{(y-\mu_y)^2}{\sigma_y^2} - \frac{2\rho(x-\mu_x)(y-\mu_y)}{\sigma_x\sigma_y} \right] \right)$$
+
+-   **The Standard Form**: This is the simplified version where $\mu_x = \mu_y = 0$ and $\sigma_x = \sigma_y = 1$. This is the version most commonly used to illustrate the "Copula" concept.
+
+$$f(x, y) = \frac{1}{2\pi\sqrt{1-\rho^2}} \exp\left( -\frac{x^2 + y^2 - 2\rho xy}{2(1-\rho^2)} \right)$$
+
+-   **The Matrix Form (Multivariate)**: For higher dimension ($n \ge 2$), we use vectors and the covariance matrix $\Sigma$. This is the most professional way to present it for a Multivariate
+
+$$f(\mathbf{x}) = \frac{1}{(2\pi)^{n/2} |\Sigma|^{1/2}} \exp\left( -\frac{1}{2} (\mathbf{x} - \boldsymbol{\mu})^\top \Sigma^{-1} (\mathbf{x} - \boldsymbol{\mu}) \right)$$
+
+
+-   ***Key for Variables***:
+
+      
+    -   $\mu_x$, $\mu_y$: Means of $x$ and $y$.
+
+    -   $\sigma_x$, $\sigma_y$: Standard deviations of $x$ and $y$.
+
+    -   $\rho$: Correlation coefficient (between $-1$ and $1$).
+
+    -   $\Sigma$: Covariance matrix.
+
+    -   $|\Sigma|^{1/2}$: Determinant of the covariance matrix.
+
+
+```{r, echo=FALSE}
+# 1. Setup grid
+x <- seq(-3, 3, length.out = 100)
+y <- seq(-3, 3, length.out = 100)
+rho <- 0.6  # Correlation coefficient
+
+# 2. Calculate Bivariate Normal PDF Formula
+# f(x,y) = [1 / (2*pi*sqrt(1-rho^2))] * exp( -1/(2*(1-rho^2)) * (x^2 + y^2 - 2*rho*x*y) )
+func <- function(x, y, rho) {
+  term1 <- 1 / (2 * pi * sqrt(1 - rho^2))
+  term2 <- exp(-(x^2 + y^2 - 2 * rho * x * y) / (2 * (1 - rho^2)))
+  return(term1 * term2)
+}
+
+# Generate the Z matrix (density values)
+z <- outer(x, y, func, rho = rho)
+
+# 3. Create the 3D Surface Plot
+plot_ly(x = ~x, y = ~y, z = ~z) %>% 
+  add_surface(colorscale = "Viridis") %>%
+  layout(
+    title = "Theoretical Bivariate Normal Surface",
+    scene = list(
+      xaxis = list(title = "Variable X"),
+      yaxis = list(title = "Variable Y"),
+      zaxis = list(title = "Density (Probability)")
+    )
+  )
+```
+
+
+------------------------------------------------------------------------
+
+# The "Secret Sauce" - Copulas
+
+A common struggle in statistics is: "***What if my X is Gamma and my Y is Normal, but they are correlated?***"
+
+Standard multivariate distributions (like Multivariate Normal) ***require all variables to be the same type***.
+
+$\Rightarrow$ **Copulas** solve this.
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(456)
+
+# STEP 1: Create Correlated Normal Data (Dependency)
+rho <- 0.8 # Strong positive correlation
+sigma <- matrix(c(1, rho, rho, 1), nrow=2)
+z_data <- mvrnorm(2000, mu = c(0, 0), Sigma = sigma)
+
+# STEP 2: The PIT (Transform to Uniform [0, 1])
+# This is the "Gaussian Copula" space
+u_data <- pnorm(z_data) 
+u_df <- as.data.frame(u_data)
+colnames(u_df) <- c("U", "V")
+
+# STEP 3: Apply New Marginals (Transform to Exp and Beta)
+# We want X to be Exponential(rate=1) and Y to be Beta(2, 5)
+x <- qexp(u_df$U, rate = 1)
+y <- qbeta(u_df$V, shape1 = 2, shape2 = 5)
+final_df <- data.frame(x = x, y = y)
+
+# --- VISUALIZATION ---
+
+p1 <- ggplot(u_df, aes(x=U, y=V)) + 
+  geom_point(alpha=0.2, color="purple") + 
+  labs(title="1. The Copula Space", subtitle="Uniform Marginals with Correlation") +
+  theme_minimal() +
+  theme(aspect.ratio = 1)
+
+p2 <- ggplot(final_df, aes(x=x, y=y)) + 
+  geom_point(alpha=0.2, color="darkgreen") + 
+  geom_density_2d(color="black") +
+  labs(title="2. The Joint Distribution", subtitle="Exponential & Beta with Correlation") +
+  theme_minimal() +
+  theme(aspect.ratio = 1)
+
+grid.arrange(p1, p2, ncol=2)
+```
+
+## The Probability Integral Transform (PIT)
+
+Any continuous random variable $X$ can be turned into a $Uniform(0, 1)$ variable by plugging it into its own **CDF**:
+
+$$ U = F_X(X) $$ This "standardizes" any distribution into a flat **0-to-1** scale.
+
+## Sklar's Theorem
+
+Sklar proved that **any Joint Distribution can be decomposed into two parts**:
+
+1.  **The Marginal**: The individual behaviour of each variable.
+
+2.  **The Copula**: A function $C(u, v)$ that describes ***only*** the link (dependency) between them:
+
+$$ F(x, y) = C(F_X(x),F_Y(y))$$
+
+------------------------------------------------------------------------
+
+# Multivariate Generalization ($n > 2$)
+
+In $n$-dimensions, we represent a vector of variables $\mathbf{X} = [X_1, X_2, ..., X_n]$
+
+The most famous example is the **Multivariate Normal Distribution**:
+
+$$ f(\mathbf{x}) = \frac{1}{(2\pi)^{n/2} |\sum|^ {1/2}} exp \left( - \frac{1}{2} (\mathbf{x} - \boldsymbol{\mu}))^\intercal {\textstyle\sum} ^{-1} (\mathbf{x} - \boldsymbol{\mu}) \right) $$
+
+-   $\boldsymbol{\mu}$: Mean vector (centers in $n$-space).
+
+-   $\textstyle\sum$: Covariance Matrix (defines the "stretch" and "rotation" of the $n$-dimensional cloud).
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Define a 3x3 Correlation Matrix
+# Correlation between (1,2)=0.8, (1,3)=0.2, (2,3)=0.5
+cor_matrix <- matrix(c(1,   0.8, 0.2,
+                       0.8, 1,   0.5,
+                       0.2, 0.5, 1), nrow=3)
+
+# 1. Generate 3D Correlated Normals
+z_3d <- mvrnorm(1000, mu = c(0,0,0), Sigma = cor_matrix)
+
+# 2. Transform all to Uniform [0, 1]
+u_3d <- pnorm(z_3d)
+
+# 3. Apply three different marginals
+# X1 = Normal, X2 = Gamma, X3 = Poisson
+x1 <- qnorm(u_3d[,1], mean=10, sd=2)
+x2 <- qgamma(u_3d[,2], shape=2, rate=1)
+x3 <- qpois(u_3d[,3], lambda=5)
+
+df_3d <- data.frame(Normal=x1, Gamma=x2, Poisson=x3)
+
+# Visualize 3D relationship (Pairs plot)
+pairs(df_3d, main="3D Joint Distribution with Mixed Marginals", col=rgb(0,0,1,0.2), pch=19)
+```
+
+# Practices
+
+## Practice 1: Let's try to understand the code
+
+```{r}
+# Load necessary libraries
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, MASS, ggplot2, patchwork, fitdistrplus, GGally)
+
+# 1. DATA COLLECTION
+# Using the Medical Cost Dataset (Kaggle: mirichnum/insurance)
+url <- "https://raw.githubusercontent.com/stedy/Machine-Learning-with-R-datasets/master/insurance.csv"
+df <- read.csv(url)
+
+# Let's focus on two continuous variables: BMI and Charges
+analysis_df <- df %>% dplyr::select(bmi, charges)
+
+# ---------------------------------------------------------
+# 2. UNIVARIATE ANALYSIS
+# ---------------------------------------------------------
+
+# Plotting BMI (Usually Normal)
+p1 <- ggplot(analysis_df, aes(x = bmi)) +
+  geom_histogram(aes(y = ..density..), bins = 30, fill = "steelblue", alpha = 0.6) +
+  geom_density(color = "darkblue", size = 1) +
+  labs(title = "Univariate: BMI", subtitle = "Appears roughly Normal") +
+  theme_minimal()
+
+# Plotting Charges (Usually Right-Skewed/Gamma)
+p2 <- ggplot(analysis_df, aes(x = charges)) +
+  geom_histogram(aes(y = ..density..), bins = 30, fill = "firebrick", alpha = 0.6) +
+  geom_density(color = "darkred", size = 1) +
+  labs(title = "Univariate: Charges", subtitle = "Heavily Right-Skewed") +
+  theme_minimal()
+
+p1 / p2
+
+# ---------------------------------------------------------
+# 3. MULTIVARIATE ANALYSIS
+# ---------------------------------------------------------
+
+# Joint Scatter Plot with Density Contours
+p3 <- ggplot(analysis_df, aes(x = bmi, y = charges)) +
+  geom_point(alpha = 0.2, color = "purple") +
+  geom_density_2d(color = "black") +
+  labs(title = "Joint Distribution: BMI vs Charges",
+       subtitle = "Non-linear dependency visible") +
+  theme_minimal()
+
+p3
+
+# ---------------------------------------------------------
+# 4. COPULA APPLICATION (The Manual Gaussian Copula Method)
+# ---------------------------------------------------------
+
+# STEP A: Probability Integral Transform (PIT)
+# We convert our variables into Uniform(0,1) marginals using their empirical CDF
+u_bmi <- rank(analysis_df$bmi) / (nrow(analysis_df) + 1)
+u_charges <- rank(analysis_df$charges) / (nrow(analysis_df) + 1)
+
+copula_df <- data.frame(u_bmi, u_charges)
+
+# Plot the Copula Space (Uniform Marginals)
+p4 <- ggplot(copula_df, aes(x = u_bmi, y = u_charges)) +
+  geom_point(alpha = 0.3, color = "darkgreen") +
+  labs(title = "Gaussian Copula Space", 
+       subtitle = "Data standardized to Uniform(0,1) to see dependency",
+       x = "U(BMI)", y = "U(Charges)") +
+  theme_minimal()
+
+# STEP B: Model Dependency in Normal Space
+# Convert Uniforms to Normal to find the "Copula Correlation" (rho)
+z_bmi <- qnorm(u_bmi)
+z_charges <- qnorm(u_charges)
+rho <- cor(z_bmi, z_charges, method = "pearson")
+
+# STEP C: Simulate Synthetic Data using the Copula
+# 1. Generate correlated normals
+sigma <- matrix(c(1, rho, rho, 1), nrow = 2)
+sim_z <- mvrnorm(n = 1000, mu = c(0,0), Sigma = sigma)
+
+# 2. Back-transform to Uniform
+sim_u <- pnorm(sim_z)
+
+# 3. Back-transform to Original Scales using Quantiles
+sim_bmi <- quantile(analysis_df$bmi, sim_u[,1])
+sim_charges <- quantile(analysis_df$charges, sim_u[,2])
+
+sim_data <- data.frame(bmi = sim_bmi, charges = sim_charges)
+
+# ---------------------------------------------------------
+# 5. COMPARISON: REAL VS SYNTHETIC (COPULA)
+# ---------------------------------------------------------
+
+p5 <- ggplot(sim_data, aes(x = bmi, y = charges)) +
+  geom_point(alpha = 0.3, color = "orange") +
+  labs(title = "Synthetic Data (via Gaussian Copula)",
+       subtitle = paste("Preserved Correlation rho =", round(rho, 3))) +
+  theme_minimal()
+
+p4 + p5
+```
+
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+
+# 1. Load Data
+url <- "https://raw.githubusercontent.com/stedy/Machine-Learning-with-R-datasets/master/insurance.csv"
+df <- read.csv(url)
+
+# 2. Probability Integral Transform (PIT)
+# Convert BMI and Charges to Uniform(0,1)
+df_copula <- df %>%
+  mutate(
+    u_bmi = rank(bmi) / (n() + 1),
+    u_charges = rank(charges) / (n() + 1)
+  )
+
+# ---------------------------------------------------------
+# PLOT 1: Contours in Copula Space [0, 1] x [0, 1]
+# This shows the "Pure Dependency"
+# ---------------------------------------------------------
+p_copula <- ggplot(df_copula, aes(x = u_bmi, y = u_charges)) +
+  # Filled contours represent the joint probability density
+  geom_density_2d_filled(alpha = 0.8) +
+  # Individual points for reference
+  geom_point(color = "white", alpha = 0.1, size = 0.5) +
+  scale_x_continuous(limits = c(0, 1)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(title = "Copula Space: Joint Probability Contours",
+       subtitle = "Density of association (Uniform Marginals)",
+       x = "U(BMI)", y = "U(Charges)") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# ---------------------------------------------------------
+# PLOT 2: Contours in Original Data Space
+# This shows the Joint PDF of the actual variables
+# ---------------------------------------------------------
+p_original <- ggplot(df, aes(x = bmi, y = charges)) +
+  geom_density_2d_filled(alpha = 0.8) +
+  geom_point(color = "white", alpha = 0.1, size = 0.5) +
+  labs(title = "Original Space: Joint Probability Contours",
+       subtitle = "Combining BMI (Normal-ish) and Charges (Gamma-ish)",
+       x = "BMI", y = "Medical Charges") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# Combine plots
+p_copula + p_original
+```
+
+```{r}
+library(plotly)
+library(MASS)
+
+# Create a 2D density estimate matrix for the Copula
+dens <- kde2d(df_copula$u_bmi, df_copula$u_charges, n = 50, lims = c(0,1,0,1))
+
+plot_ly(x = dens$x, y = dens$y, z = dens$z) %>%
+  add_surface() %>%
+  layout(title = "3D Copula Density Surface",
+         scene = list(xaxis = list(title = "U(BMI)"),
+                      yaxis = list(title = "U(Charges)"),
+                      zaxis = list(title = "Density")))
+```
+
+## Practice 2:
+Let's attempt to gather additional data from Kaggle and then proceed with the following steps:
+
+1. Determine (or construct if feasible) the univariate distribution for each variable.
+
+2. Construct the multivariate distribution between the variables (which can consist of two or more variables). The use of Copula is highly recommended.
+
+3. Attempt to estimate the return period or the probability of occurrence for certain variables in specific cases.
+
+### 1. Data Collection
+
+```{r data-collection, warning=FALSE, message=FALSE}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, MASS, ggplot2, patchwork, fitdistrplus, 
+               GGally, copula, VineCopula, plotly, viridis, knitr)
+
+# India Rainfall Dataset 1901-2015 (Kaggle)
+url <- "https://raw.githubusercontent.com/Osprey-DS/Rainfall-Measurement-in-INDIA-in-the-time-of-1901-to-2015/master/rainfall%20in%20india%201901-2015.csv"
+rain <- read_csv(url, show_col_types = FALSE)
+
+cat("Dataset Dimensions:", dim(rain), "\n")
+cat("Subdivisions available:", length(unique(rain$SUBDIVISION)), "\n")
+head(rain)
+```
+
+```{r data-preparation, warning=FALSE, message=FALSE}
+# Focus on KERALA - monsoon months (June, July, August)
+analysis_df <- rain %>%
+  dplyr::filter(SUBDIVISION == "KERALA") %>%
+  dplyr::select(YEAR, JUN, JUL, AUG) %>%
+  drop_na()
+
+cat("Analysis period:", min(analysis_df$YEAR), "-", max(analysis_df$YEAR), "\n")
+cat("Number of observations:", nrow(analysis_df), "\n")
+summary(analysis_df[, c("JUN", "JUL", "AUG")])
+```
+
+### 2. Univariate Distribution Analysis
+
+#### 2.1 Visual Inspection of Marginal Distributions
+
+```{r univariate-visualization, fig.width=12, fig.height=10, warning=FALSE, message=FALSE}
+p_jun <- ggplot(analysis_df, aes(x = JUN)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 25, 
+                 fill = "steelblue", alpha = 0.6, color = "white") +
+  geom_density(color = "darkblue", linewidth = 1.2) +
+  labs(title = "June Rainfall Distribution", subtitle = "Monsoon onset month",
+       x = "Rainfall (mm)", y = "Density") +
+  theme_minimal() + theme(plot.title = element_text(face = "bold"))
+
+p_jul <- ggplot(analysis_df, aes(x = JUL)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 25,
+                 fill = "firebrick", alpha = 0.6, color = "white") +
+  geom_density(color = "darkred", linewidth = 1.2) +
+  labs(title = "July Rainfall Distribution", subtitle = "Peak monsoon month",
+       x = "Rainfall (mm)", y = "Density") +
+  theme_minimal() + theme(plot.title = element_text(face = "bold"))
+
+p_aug <- ggplot(analysis_df, aes(x = AUG)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 25,
+                 fill = "darkgreen", alpha = 0.6, color = "white") +
+  geom_density(color = "black", linewidth = 1.2) +
+  labs(title = "August Rainfall Distribution", subtitle = "Late monsoon month",
+       x = "Rainfall (mm)", y = "Density") +
+  theme_minimal() + theme(plot.title = element_text(face = "bold"))
+
+(p_jun | p_jul | p_aug)
+```
+
+#### 2.2 Distribution Fitting & Comparison
+
+```{r distribution-fitting, warning=FALSE, message=FALSE}
+# Fit and compare Gamma, Log-Normal, Weibull distributions
+fit_distributions <- function(data, var_name) {
+  fit_gamma <- fitdist(data, "gamma", method = "mle")
+  fit_lnorm <- fitdist(data, "lnorm", method = "mle")
+  fit_weibull <- fitdist(data, "weibull", method = "mle")
+  
+  comparison <- data.frame(
+    Distribution = c("Gamma", "Log-Normal", "Weibull"),
+    AIC = c(fit_gamma$aic, fit_lnorm$aic, fit_weibull$aic),
+    BIC = c(fit_gamma$bic, fit_lnorm$bic, fit_weibull$bic)
+  )
+  
+  cat("\n===", var_name, "===\n")
+  print(comparison)
+  cat("Best fit:", comparison$Distribution[which.min(comparison$AIC)], "\n")
+  
+  return(list(gamma = fit_gamma, lnorm = fit_lnorm, weibull = fit_weibull,
+              comparison = comparison))
+}
+
+fits_JUN <- fit_distributions(analysis_df$JUN, "June")
+fits_JUL <- fit_distributions(analysis_df$JUL, "July")
+fits_AUG <- fit_distributions(analysis_df$AUG, "August")
+```
+
+```{r fitted-distribution-plots, fig.width=12, fig.height=8, warning=FALSE, message=FALSE}
+plot_fitted <- function(data, fits, title, fill_color) {
+  x_range <- seq(min(data) * 0.5, max(data) * 1.2, length.out = 200)
+  
+  df_fitted <- data.frame(
+    x = rep(x_range, 3),
+    density = c(
+      dgamma(x_range, shape = fits$gamma$estimate["shape"], rate = fits$gamma$estimate["rate"]),
+      dlnorm(x_range, meanlog = fits$lnorm$estimate["meanlog"], sdlog = fits$lnorm$estimate["sdlog"]),
+      dweibull(x_range, shape = fits$weibull$estimate["shape"], scale = fits$weibull$estimate["scale"])
+    ),
+    Distribution = rep(c("Gamma", "Log-Normal", "Weibull"), each = length(x_range))
+  )
+  
+  ggplot() +
+    geom_histogram(data = data.frame(x = data), aes(x = x, y = after_stat(density)),
+                   bins = 25, fill = fill_color, alpha = 0.4) +
+    geom_line(data = df_fitted, aes(x = x, y = density, color = Distribution), linewidth = 1.2) +
+    scale_color_manual(values = c("Gamma" = "red", "Log-Normal" = "blue", "Weibull" = "darkgreen")) +
+    labs(title = title, x = "Rainfall (mm)", y = "Density") +
+    theme_minimal() + theme(legend.position = "bottom")
+}
+
+p_fit_jun <- plot_fitted(analysis_df$JUN, fits_JUN, "June: Fitted Distributions", "steelblue")
+p_fit_jul <- plot_fitted(analysis_df$JUL, fits_JUL, "July: Fitted Distributions", "firebrick")
+p_fit_aug <- plot_fitted(analysis_df$AUG, fits_AUG, "August: Fitted Distributions", "darkgreen")
+
+(p_fit_jun | p_fit_jul) / p_fit_aug
+```
+
+```{r qq-plots, fig.width=12, fig.height=4, warning=FALSE, message=FALSE}
+par(mfrow = c(1, 3))
+qqcomp(fits_JUN$gamma, main = "Q-Q Plot: June (Gamma)")
+qqcomp(fits_JUL$gamma, main = "Q-Q Plot: July (Gamma)")
+qqcomp(fits_AUG$gamma, main = "Q-Q Plot: August (Gamma)")
+par(mfrow = c(1, 1))
+```
+
+```{r selected-distribution-parameters}
+params_table <- data.frame(
+  Month = c("June", "July", "August"),
+  Shape = c(fits_JUN$gamma$estimate["shape"], fits_JUL$gamma$estimate["shape"], fits_AUG$gamma$estimate["shape"]),
+  Rate = c(fits_JUN$gamma$estimate["rate"], fits_JUL$gamma$estimate["rate"], fits_AUG$gamma$estimate["rate"]),
+  Mean = c(fits_JUN$gamma$estimate["shape"] / fits_JUN$gamma$estimate["rate"],
+           fits_JUL$gamma$estimate["shape"] / fits_JUL$gamma$estimate["rate"],
+           fits_AUG$gamma$estimate["shape"] / fits_AUG$gamma$estimate["rate"])
+)
+kable(params_table, digits = 3, caption = "Gamma Distribution Parameters")
+```
+
+### 3. Multivariate Distribution Analysis with Copulas
+
+#### 3.1 Visualizing Joint Distributions
+
+```{r joint-distributions-viz, fig.width=12, fig.height=8, warning=FALSE, message=FALSE}
+ggpairs(analysis_df[, c("JUN", "JUL", "AUG")],
+        title = "Pairwise Relationships: Monsoon Rainfall",
+        upper = list(continuous = wrap("cor", size = 6)),
+        lower = list(continuous = wrap("points", alpha = 0.4, color = "purple")),
+        diag = list(continuous = wrap("densityDiag", fill = "steelblue"))) +
+  theme_minimal()
+```
+
+```{r 2d-joint-density, fig.width=12, fig.height=4, warning=FALSE, message=FALSE}
+p_jj <- ggplot(analysis_df, aes(x = JUN, y = JUL)) +
+  geom_point(alpha = 0.4, color = "purple") + geom_density_2d_filled(alpha = 0.5) +
+  labs(title = "Joint: June vs July", x = "June (mm)", y = "July (mm)") +
+  theme_minimal() + theme(legend.position = "none")
+
+p_ja <- ggplot(analysis_df, aes(x = JUN, y = AUG)) +
+  geom_point(alpha = 0.4, color = "blue") + geom_density_2d_filled(alpha = 0.5) +
+  labs(title = "Joint: June vs August", x = "June (mm)", y = "August (mm)") +
+  theme_minimal() + theme(legend.position = "none")
+
+p_ja2 <- ggplot(analysis_df, aes(x = JUL, y = AUG)) +
+  geom_point(alpha = 0.4, color = "darkgreen") + geom_density_2d_filled(alpha = 0.5) +
+  labs(title = "Joint: July vs August", x = "July (mm)", y = "August (mm)") +
+  theme_minimal() + theme(legend.position = "none")
+
+p_jj | p_ja | p_ja2
+```
+
+#### 3.2 Copula Construction (PIT)
+
+```{r copula-pit, warning=FALSE, message=FALSE}
+# Probability Integral Transform: Convert to Uniform[0,1]
+u_JUN <- rank(analysis_df$JUN) / (nrow(analysis_df) + 1)
+u_JUL <- rank(analysis_df$JUL) / (nrow(analysis_df) + 1)
+u_AUG <- rank(analysis_df$AUG) / (nrow(analysis_df) + 1)
+
+copula_df <- data.frame(u_JUN = u_JUN, u_JUL = u_JUL, u_AUG = u_AUG)
+summary(copula_df)
+```
+
+```{r copula-space-viz, fig.width=12, fig.height=4, warning=FALSE, message=FALSE}
+p_cop1 <- ggplot(copula_df, aes(x = u_JUN, y = u_JUL)) +
+  geom_point(alpha = 0.5, color = "darkgreen") + geom_density_2d(color = "black") +
+  scale_x_continuous(limits = c(0, 1)) + scale_y_continuous(limits = c(0, 1)) +
+  labs(title = "Copula: U(June) vs U(July)", x = "U(June)", y = "U(July)") + theme_minimal()
+
+p_cop2 <- ggplot(copula_df, aes(x = u_JUN, y = u_AUG)) +
+  geom_point(alpha = 0.5, color = "blue") + geom_density_2d(color = "black") +
+  scale_x_continuous(limits = c(0, 1)) + scale_y_continuous(limits = c(0, 1)) +
+  labs(title = "Copula: U(June) vs U(August)", x = "U(June)", y = "U(August)") + theme_minimal()
+
+p_cop3 <- ggplot(copula_df, aes(x = u_JUL, y = u_AUG)) +
+  geom_point(alpha = 0.5, color = "firebrick") + geom_density_2d(color = "black") +
+  scale_x_continuous(limits = c(0, 1)) + scale_y_continuous(limits = c(0, 1)) +
+  labs(title = "Copula: U(July) vs U(August)", x = "U(July)", y = "U(August)") + theme_minimal()
+
+p_cop1 | p_cop2 | p_cop3
+```
+
+#### 3.3 Gaussian Copula Fitting (3 Variables)
+
+```{r gaussian-copula-fit, warning=FALSE, message=FALSE}
+# Transform to Normal Space
+z_JUN <- qnorm(u_JUN)
+z_JUL <- qnorm(u_JUL)
+z_AUG <- qnorm(u_AUG)
+
+z_matrix <- cbind(z_JUN, z_JUL, z_AUG)
+colnames(z_matrix) <- c("June", "July", "August")
+
+# Gaussian Copula correlation matrix
+copula_cor <- cor(z_matrix)
+cat("\n=== Gaussian Copula Correlation Matrix ===\n")
+print(round(copula_cor, 4))
+
+cat("\n=== Kendall's Tau ===\n")
+print(round(cor(copula_df, method = "kendall"), 4))
+```
+
+```{r 3d-copula-surface, warning=FALSE, message=FALSE}
+dens_copula <- kde2d(copula_df$u_JUN, copula_df$u_JUL, n = 50, lims = c(0, 1, 0, 1))
+
+plot_ly(x = dens_copula$x, y = dens_copula$y, z = dens_copula$z) %>%
+  add_surface(colorscale = "Viridis") %>%
+  layout(title = "3D Copula Density: June vs July",
+         scene = list(xaxis = list(title = "U(June)"),
+                      yaxis = list(title = "U(July)"),
+                      zaxis = list(title = "Density")))
+```
+
+#### 3.4 Copula-Based Simulation
+
+```{r copula-simulation, fig.width=12, fig.height=5, warning=FALSE, message=FALSE}
+set.seed(123)
+n_sim <- 2000
+
+# Simulate from Trivariate Gaussian Copula
+sim_z <- mvrnorm(n = n_sim, mu = c(0, 0, 0), Sigma = copula_cor)
+sim_u <- pnorm(sim_z)
+
+# Transform to original scale
+sim_JUN <- quantile(analysis_df$JUN, probs = sim_u[,1], type = 7)
+sim_JUL <- quantile(analysis_df$JUL, probs = sim_u[,2], type = 7)
+sim_AUG <- quantile(analysis_df$AUG, probs = sim_u[,3], type = 7)
+
+sim_data <- data.frame(JUN = sim_JUN, JUL = sim_JUL, AUG = sim_AUG)
+
+# Compare Real vs Simulated
+p_comp1 <- ggplot() +
+  geom_point(data = analysis_df, aes(x = JUN, y = JUL), alpha = 0.4, color = "black", size = 2) +
+  geom_point(data = sim_data, aes(x = JUN, y = JUL), alpha = 0.3, color = "orange") +
+  labs(title = "June vs July: Real (Black) vs Simulated (Orange)", x = "June (mm)", y = "July (mm)") +
+  theme_minimal()
+
+p_comp2 <- ggplot() +
+  geom_point(data = analysis_df, aes(x = JUL, y = AUG), alpha = 0.4, color = "black", size = 2) +
+  geom_point(data = sim_data, aes(x = JUL, y = AUG), alpha = 0.3, color = "orange") +
+  labs(title = "July vs August: Real (Black) vs Simulated (Orange)", x = "July (mm)", y = "August (mm)") +
+  theme_minimal()
+
+p_comp1 | p_comp2
+```
+
+```{r simulation-validation, warning=FALSE, message=FALSE}
+comparison_stats <- data.frame(
+  Variable = rep(c("June", "July", "August"), 2),
+  Type = rep(c("Observed", "Simulated"), each = 3),
+  Mean = c(mean(analysis_df$JUN), mean(analysis_df$JUL), mean(analysis_df$AUG),
+           mean(sim_data$JUN), mean(sim_data$JUL), mean(sim_data$AUG)),
+  SD = c(sd(analysis_df$JUN), sd(analysis_df$JUL), sd(analysis_df$AUG),
+         sd(sim_data$JUN), sd(sim_data$JUL), sd(sim_data$AUG)),
+  Median = c(median(analysis_df$JUN), median(analysis_df$JUL), median(analysis_df$AUG),
+             median(sim_data$JUN), median(sim_data$JUL), median(sim_data$AUG))
+)
+kable(comparison_stats, digits = 2, caption = "Observed vs Simulated Statistics")
+```
+
+### 4. Return Period and Probability of Occurrence
+
+#### 4.1 Extreme Event Definition
+
+```{r extreme-thresholds, warning=FALSE, message=FALSE}
+q90_JUN <- quantile(analysis_df$JUN, 0.90)
+q90_JUL <- quantile(analysis_df$JUL, 0.90)
+q90_AUG <- quantile(analysis_df$AUG, 0.90)
+
+cat("=== Extreme Thresholds (90th Percentile) ===\n")
+cat("June:", round(q90_JUN, 1), "mm | July:", round(q90_JUL, 1), "mm | August:", round(q90_AUG, 1), "mm\n")
+```
+
+#### 4.2 Univariate Return Period
+
+```{r univariate-return-period, warning=FALSE, message=FALSE}
+thresholds_JUL <- c(600, 700, 800, 900, 1000)
+
+rp_results <- data.frame(
+  Threshold_mm = thresholds_JUL,
+  Prob_Exceed = sapply(thresholds_JUL, function(t) {
+    1 - pgamma(t, shape = fits_JUL$gamma$estimate["shape"], rate = fits_JUL$gamma$estimate["rate"])
+  }),
+  Return_Period_Years = sapply(thresholds_JUL, function(t) {
+    1 / (1 - pgamma(t, shape = fits_JUL$gamma$estimate["shape"], rate = fits_JUL$gamma$estimate["rate"]))
+  })
+)
+kable(rp_results, digits = 4, caption = "July Rainfall Return Period")
+```
+
+```{r return-period-plot, fig.width=10, fig.height=5, warning=FALSE, message=FALSE}
+x_vals <- seq(400, 1200, by = 10)
+rp_curve <- data.frame(
+  Rainfall = x_vals,
+  Return_Period = 1 / (1 - pgamma(x_vals, shape = fits_JUL$gamma$estimate["shape"],
+                                   rate = fits_JUL$gamma$estimate["rate"]))
+)
+
+ggplot(rp_curve, aes(x = Rainfall, y = Return_Period)) +
+  geom_line(color = "firebrick", linewidth = 1.5) +
+  geom_hline(yintercept = c(10, 50, 100), linetype = "dashed", color = "gray40") +
+  annotate("text", x = 1150, y = 10, label = "10-year", color = "gray40") +
+  annotate("text", x = 1150, y = 50, label = "50-year", color = "gray40") +
+  annotate("text", x = 1150, y = 100, label = "100-year", color = "gray40") +
+  scale_y_log10() +
+  labs(title = "July Rainfall: Return Period Curve", x = "Rainfall (mm)", y = "Return Period (Years)") +
+  theme_minimal() + theme(plot.title = element_text(face = "bold"))
+```
+
+#### 4.3 Bivariate Return Period
+
+```{r bivariate-return-period, warning=FALSE, message=FALSE}
+# Joint probability: July > 700mm AND August > 500mm
+event_both_high <- analysis_df$JUL > 700 & analysis_df$AUG > 500
+prob_joint_empirical <- mean(event_both_high)
+rp_joint_empirical <- 1 / prob_joint_empirical
+
+cat("=== Joint Event: July > 700mm AND August > 500mm ===\n")
+cat("Probability:", round(prob_joint_empirical, 4), "| Return Period:", round(rp_joint_empirical, 2), "years\n")
+```
+
+```{r copula-based-probability, warning=FALSE, message=FALSE}
+# Copula-based probability
+sim_event <- sim_data$JUL > 700 & sim_data$AUG > 500
+prob_copula <- mean(sim_event)
+rp_copula <- 1 / prob_copula
+
+cat("=== Copula-Based ===\n")
+cat("Probability:", round(prob_copula, 4), "| Return Period:", round(rp_copula, 2), "years\n")
+```
+
+```{r exceedance-contours, fig.width=10, fig.height=6, warning=FALSE, message=FALSE}
+ggplot(analysis_df, aes(x = JUL, y = AUG)) +
+  geom_point(alpha = 0.5, color = "gray50", size = 2) +
+  geom_point(data = subset(analysis_df, JUL > 700 & AUG > 500),
+             aes(x = JUL, y = AUG), color = "red", size = 3) +
+  geom_vline(xintercept = 700, linetype = "dashed", color = "blue", linewidth = 1) +
+  geom_hline(yintercept = 500, linetype = "dashed", color = "blue", linewidth = 1) +
+  annotate("rect", xmin = 700, xmax = Inf, ymin = 500, ymax = Inf, alpha = 0.2, fill = "red") +
+  annotate("text", x = 750, y = 700, label = paste("RP =", round(rp_joint_empirical, 1), "years"), 
+           color = "red", fontface = "bold") +
+  labs(title = "Joint Exceedance: July & August", x = "July (mm)", y = "August (mm)") +
+  theme_minimal() + theme(plot.title = element_text(face = "bold"))
+```
+
+#### 4.4 Comprehensive Return Period Table
+
+```{r comprehensive-rp-table, warning=FALSE, message=FALSE}
+scenarios <- data.frame(
+  Event = c("July > 600 & August > 400", "July > 700 & August > 500",
+            "July > 800 & August > 600", "June > 600 & July > 700 & August > 500"),
+  Prob_Empirical = c(
+    mean(analysis_df$JUL > 600 & analysis_df$AUG > 400),
+    mean(analysis_df$JUL > 700 & analysis_df$AUG > 500),
+    mean(analysis_df$JUL > 800 & analysis_df$AUG > 600),
+    mean(analysis_df$JUN > 600 & analysis_df$JUL > 700 & analysis_df$AUG > 500)
+  )
+)
+scenarios$Return_Period_Years <- 1 / scenarios$Prob_Empirical
+scenarios$Occurrences <- nrow(analysis_df) * scenarios$Prob_Empirical
+
+kable(scenarios, digits = 3, caption = "Joint Event Scenarios and Return Periods",
+      col.names = c("Event", "Probability", "Return Period (Years)", "Expected Occurrences"))
+```
+
+### 5. Summary
+
+```{r summary, warning=FALSE, message=FALSE}
+cat("=== PRACTICE 2 SUMMARY ===\n\n")
+cat("1. UNIVARIATE: All months follow Gamma distribution. July has highest mean rainfall.\n")
+cat("2. COPULA: Gaussian Copula captures dependency. Strongest: June-July (rho =", round(copula_cor[1,2], 3), ")\n")
+cat("3. RETURN PERIOD: Joint extreme (July>700 & Aug>500) has RP =", round(rp_joint_empirical, 1), "years\n")
+```
+
+# EOF
